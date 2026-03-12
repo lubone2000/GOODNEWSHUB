@@ -1,0 +1,125 @@
+{
+  "entities": {
+    "Story": {
+      "title": "Story",
+      "description": "A news story discovered and processed by the AI.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "summary": { "type": "string" },
+        "category": { "type": "string" },
+        "region": { "type": "string" },
+        "verified_score": { "type": "integer" },
+        "editorial_scores": {
+          "type": "object",
+          "properties": {
+            "novelty": { "type": "integer" },
+            "emotional_lift": { "type": "integer" },
+            "shareability": { "type": "integer" },
+            "visual_potential": { "type": "integer" },
+            "audience_fit": { "type": "integer" },
+            "shelf_life": { "type": "integer" },
+            "explainer_needed": { "type": "integer" }
+          }
+        },
+        "proof_assets": {
+          "type": "object",
+          "properties": {
+            "claim_cards": { "type": "array", "items": { "type": "string" } },
+            "source_badges": { "type": "array", "items": { "type": "string" } },
+            "confidence_meter": { "type": "integer" },
+            "verification_summary": { "type": "string" }
+          }
+        },
+        "status": { "type": "string", "enum": ["pending", "verified", "published"] },
+        "is_saved": { "type": "boolean" },
+        "uid": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "uid"]
+    },
+    "Source": {
+      "title": "Source",
+      "description": "An evidence source for a story.",
+      "type": "object",
+      "properties": {
+        "url": { "type": "string" },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "is_primary": { "type": "boolean" }
+      },
+      "required": ["url", "title"]
+    },
+    "Claim": {
+      "title": "Claim",
+      "description": "A specific claim extracted from a story for verification.",
+      "type": "object",
+      "properties": {
+        "claim_text": { "type": "string" },
+        "evidence_status": { "type": "string", "enum": ["verified", "unverified", "disputed"] }
+      },
+      "required": ["claim_text", "evidence_status"]
+    },
+    "ContentPackage": {
+      "title": "ContentPackage",
+      "description": "A generated social media content package for TikTok/Instagram.",
+      "type": "object",
+      "properties": {
+        "format": { "type": "string", "enum": ["15s_hook", "45s_reel", "90s_explainer"] },
+        "platform": { "type": "string", "enum": ["tiktok", "instagram"] },
+        "hook": { "type": "string" },
+        "script": { "type": "string" },
+        "visual_description": { "type": "string" },
+        "performance": {
+          "type": "object",
+          "properties": {
+            "watch_time": { "type": "number" },
+            "completion_rate": { "type": "number" },
+            "shares": { "type": "integer" },
+            "saves": { "type": "integer" },
+            "comments": { "type": "integer" },
+            "reposts": { "type": "integer" },
+            "clicks": { "type": "integer" }
+          }
+        }
+      },
+      "required": ["format", "platform", "script"]
+    },
+    "Webhook": {
+      "title": "Webhook",
+      "description": "A user-defined webhook for automation.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "url": { "type": "string" },
+        "active": { "type": "boolean" },
+        "uid": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "url", "uid"]
+    }
+  },
+  "firestore": {
+    "/stories/{storyId}": {
+      "schema": "Story",
+      "description": "Collection of news stories."
+    },
+    "/stories/{storyId}/sources/{sourceId}": {
+      "schema": "Source",
+      "description": "Sources for a specific story."
+    },
+    "/stories/{storyId}/claims/{claimId}": {
+      "schema": "Claim",
+      "description": "Claims for a specific story."
+    },
+    "/stories/{storyId}/packages/{packageId}": {
+      "schema": "ContentPackage",
+      "description": "Content packages for a specific story."
+    },
+    "/webhooks/{webhookId}": {
+      "schema": "Webhook",
+      "description": "User-defined webhooks."
+    }
+  }
+}

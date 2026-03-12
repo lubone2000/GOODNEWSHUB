@@ -1,0 +1,5 @@
+{
+  "name": "Good News App",
+  "description": "An AI-powered newsroom for discovering positive stories, verifying evidence, generating multi-platform social content, and automating publishing via webhooks.",
+  "requestFramePermissions": []
+}

@@ -199,9 +199,18 @@ function AppContent() {
   const handleLogin = async () => {
     try {
       const provider = new GoogleAuthProvider();
+      // Force account selection to ensure the popup stays open for interaction
+      provider.setCustomParameters({ prompt: 'select_account' });
       await signInWithPopup(auth, provider);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Login failed", error);
+      if (error.code === 'auth/popup-blocked') {
+        alert("The login popup was blocked by your browser. Please allow popups for this site.");
+      } else if (error.code === 'auth/unauthorized-domain') {
+        alert(`This domain (${window.location.hostname}) is not authorized in the Firebase Console. Please add it to Authorized Domains.`);
+      } else {
+        alert(`Login error: ${error.message}`);
+      }
     }
   };
 

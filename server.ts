@@ -1,5 +1,4 @@
 import express from "express";
-import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
@@ -15,42 +14,24 @@ async function startServer() {
 
   app.use(express.json());
 
-  // Logging middleware
+  // Fix for Firebase Auth Popup closing immediately on some browsers/hosts
   app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+    res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
     next();
   });
 
-  // API Routes
+  // Health check for Render/Cloud Run
+  app.get("/healthz", (req, res) => res.status(200).send("OK"));
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", time: new Date().toISOString() });
   });
 
-  // Webhook Proxy - Keeps logic server-side and avoids CORS issues
-  app.post("/api/webhooks/push", async (req, res) => {
-    const { url, payload } = req.body;
-    
-    if (!url || !payload) {
-      return res.status(400).json({ error: "Missing url or payload" });
+  // Logging middleware
+  app.use((req, res, next) => {
+    if (req.url !== "/healthz") {
+      console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
     }
-
-    try {
-      console.log(`Firing webhook to: ${url}`);
-      const response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-
-      res.json({ 
-        success: response.ok, 
-        status: response.status,
-        message: response.ok ? "Webhook fired successfully" : "Webhook failed"
-      });
-    } catch (error) {
-      console.error("Webhook Proxy Error:", error);
-      res.status(500).json({ error: "Failed to fire webhook via proxy" });
-    }
+    next();
   });
 
   // Determine if we are in production mode
@@ -58,23 +39,28 @@ async function startServer() {
   const distPath = path.join(__dirname, "dist");
 
   if (!isProduction) {
-    console.log("Starting in DEVELOPMENT mode with Vite middleware...");
+    console.log("Starting in DEVELOPMENT mode...");
+    // Dynamic import to avoid loading Vite in production (saves RAM)
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
   } else {
-    console.log(`Starting in PRODUCTION mode. Serving static files from: ${distPath}`);
+    console.log(`Starting in PRODUCTION mode. Serving from: ${distPath}`);
     app.use(express.static(distPath));
     app.get("*", (req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+  app.listen(Number(PORT), "0.0.0.0", () => {
+    console.log(`Server is listening on port ${PORT}`);
   });
 }
 
-startServer();
+startServer().catch(err => {
+  console.error("Failed to start server:", err);
+  process.exit(1);
+});

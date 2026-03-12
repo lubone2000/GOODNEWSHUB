@@ -17,40 +17,36 @@ export const geminiService = {
   async discoverNews(query: string, existingTitles: string[] = []) {
     try {
       console.log("Discovering news for query:", query);
+      const today = new Date().toISOString().split('T')[0];
+      const randomSeed = Math.floor(Math.random() * 1000000);
+      
       const avoidPrompt = existingTitles.length > 0 
-        ? `\n\nCRITICAL: DO NOT include stories that are the same as or very similar to these existing titles: ${existingTitles.slice(-20).join(", ")}`
+        ? `\n\nCRITICAL: DO NOT include stories that are the same as or very similar to these existing titles: ${existingTitles.slice(-30).join(", ")}`
         : "";
 
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: `Find 10 recent positive news stories about ${query}. ${avoidPrompt}
+        contents: `Find 10 unique, REAL, and RECENT positive news stories about ${query || "global progress and innovation"}. 
+        
+        Today's Date: ${today}
+        Random Seed: ${randomSeed}
+        ${avoidPrompt}
         
         CRITICAL INSTRUCTIONS:
-        1. Use Google Search to find REAL, RECENT (last 30 days) news.
-        2. Inspired by 'themotivatehq' (Instagram) and these high-quality resources:
-           - Positive News (positive.news)
-           - Reasons to be Cheerful (reasonstobecheerful.world)
-           - Good News Network (goodnewsnetwork.org)
-           - The Optimist Daily (optimistdaily.com)
-           - Squirrel News (squirrel-news.net)
-           - Good News EU (goodnews.eu)
-           - Good Impact (goodimpact.eu)
-           - Good Good Good (goodgoodgood.co)
-           - BBC Positive News (bbc.com/news/topics/cx2pk70323et)
-           - World Animal Protection (worldanimalprotection.org)
-           - Reuters Curated News (reuters.com)
-        3. Prioritize stories about:
-           - Wildlife conservation success (e.g. species no longer endangered).
-           - Environmental breakthroughs (e.g. plastic bans, reforestation).
-           - Human rights and social justice victories (e.g. land returns, new protective laws).
-           - Health breakthroughs (e.g. cancer research milestones, new medical access).
+        1. Use Google Search to find REAL news from the last 7-14 days. 
+        2. DO NOT repeat the same stories if this is a subsequent search. Look for different angles or lesser-known breakthroughs.
+        3. Inspired by 'themotivatehq' (Instagram) and high-quality resources like Positive News, Reasons to be Cheerful, and Good News Network.
+        4. Prioritize stories about:
+           - Wildlife conservation success.
+           - Environmental breakthroughs (plastic bans, reforestation).
+           - Human rights and social justice victories.
+           - Health breakthroughs (cancer research, medical access).
            - Community-led urban innovations.
-        4. Prioritize high-authority sources: Reuters, AP, BBC, Nature, Science, NASA, UN, major universities (.edu), and government agencies (.gov).
-        5. Avoid tabloid or unverified social media rumors.
+        5. Prioritize high-authority sources: Reuters, AP, BBC, Nature, Science, NASA, UN, major universities, and government agencies.
         6. Categories MUST be one of: Tech, Nature, Culture, Politics, Science, Health, Historical Context, Economic Resilience, Space & Frontiers, Social Innovation, Future Visions, Creative Frontiers, Urban Evolution.
         7. Return as a JSON array of objects with: id (slug), title, summary, category, region, and a list of sources (url, title).
         
-        Focus on verified, impactful news that represents genuine progress and emotional connection.`,
+        Focus on verified, impactful news that represents genuine progress. If no new stories are found for the specific query, expand the search to related positive developments.`,
         config: {
           tools: [{ googleSearch: {} }],
           responseMimeType: "application/json",

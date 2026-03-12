@@ -29,6 +29,7 @@ import { auth, db, storage } from './firebase';
 import { 
   onAuthStateChanged, 
   signInWithPopup, 
+  signInWithRedirect,
   GoogleAuthProvider, 
   signOut, 
   User 
@@ -46,7 +47,8 @@ import {
   addDoc, 
   serverTimestamp,
   getDocs,
-  writeBatch
+  writeBatch,
+  increment
 } from 'firebase/firestore';
 import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 
@@ -140,6 +142,40 @@ function AppContent() {
   const [newWebhookName, setNewWebhookName] = useState('');
   const [newWebhookUrl, setNewWebhookUrl] = useState('');
   const [showWebhookSettings, setShowWebhookSettings] = useState(false);
+  const [estimatedSpend, setEstimatedSpend] = useState<number>(0);
+  const [aiStatus, setAiStatus] = useState<'connected' | 'processing' | 'error'>('connected');
+
+  // Load/Save Spend from Firestore
+  useEffect(() => {
+    if (!user) return;
+    const userRef = doc(db, 'users', user.uid);
+    const unsubscribe = onSnapshot(userRef, (doc) => {
+      if (doc.exists()) {
+        setEstimatedSpend(doc.data().estimated_spend || 0);
+      } else {
+        // Initialize user doc if it doesn't exist
+        setDoc(userRef, { 
+          email: user.email, 
+          displayName: user.displayName, 
+          estimated_spend: 0,
+          created_at: serverTimestamp() 
+        }, { merge: true });
+      }
+    });
+    return () => unsubscribe();
+  }, [user]);
+
+  const trackUsage = async (cost: number) => {
+    if (!user) return;
+    try {
+      const userRef = doc(db, 'users', user.uid);
+      await updateDoc(userRef, {
+        estimated_spend: increment(cost)
+      });
+    } catch (error) {
+      console.error("Failed to track usage", error);
+    }
+  };
 
   // Auth Listener
   useEffect(() => {
@@ -307,12 +343,14 @@ function AppContent() {
   const handleDiscover = async () => {
     if (!user) return;
     setLoading(true);
+    setAiStatus('processing');
     const fullQuery = selectedRegion ? `${searchQuery} in ${selectedRegion}` : searchQuery;
     try {
       const existingTitles = stories.map(s => s.title);
       const newStories = await geminiService.discoverNews(fullQuery, existingTitles);
       
       if (newStories && newStories.length > 0) {
+        await trackUsage(0.001); // Estimated cost for discovery
         for (const story of newStories) {
           const storyRef = doc(collection(db, 'stories'));
           const batch = writeBatch(db);
@@ -335,10 +373,12 @@ function AppContent() {
           await batch.commit();
         }
       } else {
-        alert("No new stories found for this query. Try a different topic!");
+        alert(`No new stories found for "${searchQuery}". Try a more specific topic or one of the Quick Search suggestions!`);
       }
+      setAiStatus('connected');
     } catch (error) {
       console.error("Discovery failed", error);
+      setAiStatus('error');
       alert("Something went wrong during discovery.");
     } finally {
       setLoading(false);
@@ -352,6 +392,24 @@ function AppContent() {
       await updateDoc(doc(db, 'stories', docId), { is_saved: !isSaved });
     } catch (error) {
       console.error("Failed to save story", error);
+      alert("Failed to save story. Please check your connection.");
+    }
+  };
+
+  const handleDeleteStory = async (id: string) => {
+    if (!confirm("Are you sure you want to remove this story from your feed?")) return;
+    try {
+      const story = stories.find(s => s.docId === id || s.id === id);
+      const docId = story?.docId || id;
+      await deleteDoc(doc(db, 'stories', docId));
+      if (selectedStoryId === id) {
+        setSelectedStoryId(null);
+        setSelectedStory(null);
+        setActiveTab('feed');
+      }
+    } catch (error) {
+      console.error("Failed to delete story", error);
+      alert("Failed to delete story.");
     }
   };
 
@@ -390,8 +448,10 @@ function AppContent() {
   const handleVerify = async () => {
     if (!selectedStory || !user) return;
     setLoading(true);
+    setAiStatus('processing');
     try {
       const verification = await geminiService.verifyStory(selectedStory, selectedStory.sources);
+      await trackUsage(0.005); // Estimated cost for deep verification
       
       const storyRef = doc(db, 'stories', selectedStory.docId);
       const batch = writeBatch(db);
@@ -418,8 +478,10 @@ function AppContent() {
 
       await batch.commit();
       handleSelectStory(selectedStory.docId, false);
+      setAiStatus('connected');
     } catch (error) {
       console.error("Verification failed", error);
+      setAiStatus('error');
     } finally {
       setLoading(false);
     }
@@ -428,6 +490,7 @@ function AppContent() {
   const handleGenerateContent = async (platform: 'tiktok' | 'instagram') => {
     if (!selectedStory || !user) return;
     setLoading(true);
+    setAiStatus('processing');
     try {
       const options = await geminiService.generateContent(
         selectedStory, 
@@ -436,6 +499,7 @@ function AppContent() {
         selectedStyle, 
         steeringInstruction
       );
+      await trackUsage(0.002); // Estimated cost for content generation
       
       if (options && options.length > 0) {
         const storyRef = doc(db, 'stories', selectedStory.docId);
@@ -464,8 +528,10 @@ function AppContent() {
         await batch.commit();
         handleSelectStory(selectedStory.docId, false);
       }
+      setAiStatus('connected');
     } catch (error) {
       console.error("Content generation failed", error);
+      setAiStatus('error');
     } finally {
       setLoading(false);
     }
@@ -527,14 +593,19 @@ function AppContent() {
   };
 
   const handleGenerateImage = async (prompt: string) => {
+    if (!user) return;
     setLoading(true);
+    setAiStatus('processing');
     setGeneratedImages([null, null, null]);
     try {
       const promises = [0, 1, 2].map(i => geminiService.generateImage(prompt, i));
       const results = await Promise.all(promises);
+      await trackUsage(0.03); // Estimated cost for 3 image generations (0.01 each)
       setGeneratedImages(results);
+      setAiStatus('connected');
     } catch (error) {
       console.error("Image generation failed", error);
+      setAiStatus('error');
     } finally {
       setLoading(false);
     }
@@ -624,7 +695,25 @@ function AppContent() {
             {activeTab === 'visual' && "Visual Studio"}
             {activeTab === 'export' && "Export Center"}
           </h1>
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-6">
+            {/* AI Status & Spend */}
+            <div className="hidden md:flex items-center space-x-4 px-4 py-2 bg-[#141414]/5 rounded-full border border-[#141414]/5">
+              <div className="flex items-center space-x-2 border-r border-[#141414]/10 pr-4">
+                <div className={`w-2 h-2 rounded-full ${
+                  aiStatus === 'connected' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 
+                  aiStatus === 'processing' ? 'bg-amber-500 animate-pulse' : 
+                  'bg-rose-500'
+                }`} />
+                <span className="text-[10px] font-bold uppercase tracking-widest opacity-60">
+                  AI {aiStatus === 'connected' ? 'Online' : aiStatus === 'processing' ? 'Thinking' : 'Offline'}
+                </span>
+              </div>
+              <div className="flex items-center space-x-1">
+                <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">Est. Spend:</span>
+                <span className="text-[10px] font-mono font-bold text-emerald-600">€{estimatedSpend.toFixed(3)}</span>
+              </div>
+            </div>
+
             <div className="flex items-center space-x-3 px-4 py-2 bg-[#F5F5F0] rounded-full border border-[#141414]/5">
               <div className="w-6 h-6 bg-[#141414] rounded-full flex items-center justify-center text-white text-[10px]">
                 {user.displayName?.[0] || 'U'}
@@ -654,19 +743,28 @@ function AppContent() {
                   <option value="South America">South America</option>
                   <option value="Oceania">Oceania</option>
                 </select>
-                <div className="flex items-center bg-[#F5F5F0] rounded-full px-4 py-2 border border-[#141414]/5">
+                <div className="flex items-center bg-[#F5F5F0] rounded-full px-4 py-2 border border-[#141414]/5 relative group">
                   <Search size={18} className="text-[#141414]/40 mr-2" />
                   <input 
                     type="text" 
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Search topics..."
-                    className="bg-transparent border-none outline-none text-sm w-48 lg:w-64"
+                    className="bg-transparent border-none outline-none text-sm w-48 lg:w-64 pr-8"
                   />
+                  {searchQuery && (
+                    <button 
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-24 p-1 hover:text-red-500 transition-colors"
+                      title="Clear search"
+                    >
+                      <Plus size={14} className="rotate-45" />
+                    </button>
+                  )}
                   <button 
                     onClick={handleDiscover}
                     disabled={loading}
-                    className="ml-4 text-xs font-bold uppercase tracking-wider hover:opacity-70 disabled:opacity-30"
+                    className="ml-4 text-xs font-bold uppercase tracking-wider hover:opacity-70 disabled:opacity-30 whitespace-nowrap"
                   >
                     {loading ? 'Searching...' : 'Discover'}
                   </button>
@@ -681,7 +779,20 @@ function AppContent() {
 
         <div className="p-8 max-w-7xl mx-auto">
           {activeTab === 'feed' && (
-            <div className="flex flex-wrap gap-2 mb-8 overflow-x-auto pb-2 scrollbar-hide">
+            <>
+              <div className="flex flex-wrap gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-[#141414]/30 self-center mr-2">Quick Search:</span>
+                {['Ocean Cleanup', 'Renewable Energy', 'Medical Breakthroughs', 'Wildlife Conservation', 'Social Justice', 'Space Exploration'].map(q => (
+                  <button
+                    key={q}
+                    onClick={() => { setSearchQuery(q); }}
+                    className="px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest bg-[#141414]/5 text-[#141414]/60 hover:bg-[#141414] hover:text-white transition-all"
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-2 mb-8 overflow-x-auto pb-2 scrollbar-hide">
               <button 
                 onClick={() => setSelectedCategory(null)}
                 className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest transition-all border ${!selectedCategory ? 'bg-[#141414] text-white border-[#141414]' : 'bg-white text-[#141414]/40 border-[#141414]/10 hover:border-[#141414]/40'}`}
@@ -698,6 +809,7 @@ function AppContent() {
                 </button>
               ))}
             </div>
+          </>
           )}
 
           <AnimatePresence mode="wait">
@@ -715,6 +827,7 @@ function AppContent() {
                     story={story} 
                     onClick={() => { handleSelectStory(story.id); }}
                     onSave={(e: any) => { e.stopPropagation(); handleSave(story.id, !!story.is_saved); }}
+                    onDelete={(e: any) => { e.stopPropagation(); handleDeleteStory(story.id); }}
                     active={selectedStoryId === story.id}
                   />
                 ))}
@@ -754,6 +867,7 @@ function AppContent() {
                     story={story} 
                     onClick={() => { handleSelectStory(story.id); }}
                     onSave={(e: any) => { e.stopPropagation(); handleSave(story.id, !!story.is_saved); }}
+                    onDelete={(e: any) => { e.stopPropagation(); handleDeleteStory(story.id); }}
                     active={selectedStoryId === story.id}
                   />
                 ))}
@@ -1387,7 +1501,7 @@ function NavIcon({ icon, active, onClick, disabled, label }: { icon: React.React
   );
 }
 
-function StoryCard({ story, onClick, onSave, active }: any) {
+function StoryCard({ story, onClick, onSave, onDelete, active }: any) {
   const color = CATEGORY_COLORS[story.category] || CATEGORY_COLORS['Default'];
   
   return (
@@ -1396,12 +1510,22 @@ function StoryCard({ story, onClick, onSave, active }: any) {
       onClick={onClick}
       className={`bg-white p-6 rounded-3xl border transition-all cursor-pointer group relative ${active ? 'border-[#141414] shadow-lg' : 'border-[#141414]/5 shadow-sm hover:border-[#141414]/20'}`}
     >
-      <button 
-        onClick={onSave}
-        className={`absolute top-6 right-6 p-2 rounded-full transition-all z-10 ${story.is_saved ? 'bg-amber-50 text-amber-600' : 'bg-transparent text-[#141414]/20 hover:text-[#141414] hover:bg-[#F5F5F0]'}`}
-      >
-        <Bookmark size={16} className={story.is_saved ? 'fill-current' : ''} />
-      </button>
+      <div className="absolute top-6 right-6 flex items-center space-x-2 z-10">
+        <button 
+          onClick={onDelete}
+          className="p-2 rounded-full bg-transparent text-[#141414]/20 hover:text-red-500 hover:bg-red-50 transition-all"
+          title="Delete Story"
+        >
+          <Trash2 size={16} />
+        </button>
+        <button 
+          onClick={onSave}
+          className={`p-2 rounded-full transition-all ${story.is_saved ? 'bg-amber-50 text-amber-600' : 'bg-transparent text-[#141414]/20 hover:text-[#141414] hover:bg-[#F5F5F0]'}`}
+          title={story.is_saved ? "Unsave Story" : "Save Story"}
+        >
+          <Bookmark size={16} className={story.is_saved ? 'fill-current' : ''} />
+        </button>
+      </div>
 
       <div className="flex justify-between items-start mb-4 pr-8">
         <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest border ${color.bg} ${color.text} ${color.border}`}>

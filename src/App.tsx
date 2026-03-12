@@ -199,15 +199,27 @@ function AppContent() {
   const handleLogin = async () => {
     try {
       const provider = new GoogleAuthProvider();
-      // Force account selection to ensure the popup stays open for interaction
       provider.setCustomParameters({ prompt: 'select_account' });
+      
+      // Try popup first
       await signInWithPopup(auth, provider);
     } catch (error: any) {
       console.error("Login failed", error);
-      if (error.code === 'auth/popup-blocked') {
-        alert("The login popup was blocked by your browser. Please allow popups for this site.");
+      
+      if (error.code === 'auth/network-request-failed') {
+        const retry = confirm("Login failed due to a network error. This is often caused by ad-blockers or tracking protection. Would you like to try the 'Redirect' method instead?");
+        if (retry) {
+          try {
+            const provider = new GoogleAuthProvider();
+            await signInWithRedirect(auth, provider);
+          } catch (redirectError: any) {
+            alert(`Redirect login failed: ${redirectError.message}`);
+          }
+        }
+      } else if (error.code === 'auth/popup-blocked') {
+        alert("The login popup was blocked by your browser. Please allow popups or try again.");
       } else if (error.code === 'auth/unauthorized-domain') {
-        alert(`This domain (${window.location.hostname}) is not authorized in the Firebase Console. Please add it to Authorized Domains.`);
+        alert(`This domain (${window.location.hostname}) is not authorized in Firebase. Please add it to 'Authorized Domains' in the Firebase Console.`);
       } else {
         alert(`Login error: ${error.message}`);
       }

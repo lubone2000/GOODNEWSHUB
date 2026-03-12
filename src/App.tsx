@@ -983,7 +983,7 @@ function AppContent() {
                           <div className="bg-white p-6 rounded-3xl border border-[#141414]/5 space-y-4">
                             <h4 className="text-[10px] font-bold uppercase tracking-widest opacity-40">Source Badges</h4>
                             <div className="flex flex-wrap gap-2">
-                              {selectedStory.proof_assets.source_badges.map((badge: string, i: number) => (
+                              {selectedStory.proof_assets.source_badges?.map((badge: string, i: number) => (
                                 <span key={i} className="px-3 py-1 bg-[#F5F5F0] rounded-full text-[10px] font-bold uppercase tracking-widest text-[#141414]/60">
                                   {badge}
                                 </span>
@@ -993,7 +993,7 @@ function AppContent() {
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {selectedStory.proof_assets.claim_cards.map((card: string, i: number) => (
+                          {selectedStory.proof_assets.claim_cards?.map((card: string, i: number) => (
                             <div key={i} className="bg-emerald-50 border border-emerald-100 p-6 rounded-3xl text-center space-y-2">
                               <p className="text-sm font-serif italic text-emerald-900">"{card}"</p>
                               <span className="text-[8px] font-bold uppercase tracking-widest text-emerald-600/50">Verified Claim Card</span>
@@ -1292,7 +1292,7 @@ function AppContent() {
                                 {selectedStory.packages?.[selectedStory.packages.length - 1]?.headline && (
                                   <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-4 pt-12">
                                     <p className="text-[10px] font-black text-yellow-400 leading-tight uppercase tracking-tighter text-center line-clamp-3 drop-shadow-lg">
-                                      {selectedStory.packages[selectedStory.packages.length - 1].headline}
+                                      {selectedStory.packages?.[selectedStory.packages.length - 1]?.headline}
                                     </p>
                                   </div>
                                 )}
@@ -1314,8 +1314,9 @@ function AppContent() {
                                     <div className="flex flex-col space-y-1 w-full px-4">
                                       <p className="text-[8px] text-white font-bold uppercase tracking-widest text-center mb-1">Save to Package:</p>
                                       <div className="flex flex-wrap justify-center gap-1">
-                                        {Array.from(new Set(selectedStory.packages.map((p: any) => p.platform))).map((platform: any) => {
-                                          const pkg = selectedStory.packages.find((p: any) => p.platform === platform);
+                                        {Array.from(new Set((selectedStory.packages || []).map((p: any) => p.platform))).map((platform: any) => {
+                                          const pkg = selectedStory.packages?.find((p: any) => p.platform === platform);
+                                          if (!pkg) return null;
                                           return (
                                             <button
                                               key={platform}

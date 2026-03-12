@@ -167,10 +167,16 @@ export const geminiService = {
       });
       const text = response.text;
       if (!text) return { score: 0, claims: [], flags: [], editorial_scores: {}, proof_assets: {} };
-      return JSON.parse(cleanJson(text));
+      const data = JSON.parse(cleanJson(text));
+      // Ensure proof_assets has arrays to prevent frontend crashes
+      if (data.proof_assets) {
+        data.proof_assets.claim_cards = data.proof_assets.claim_cards || [];
+        data.proof_assets.source_badges = data.proof_assets.source_badges || [];
+      }
+      return data;
     } catch (error) {
       console.error("Error in verifyStory:", error);
-      return { score: 0, claims: [], flags: [], editorial_scores: {}, proof_assets: {} };
+      return { score: 0, claims: [], flags: [], editorial_scores: {}, proof_assets: { claim_cards: [], source_badges: [], verification_summary: "" } };
     }
   },
 

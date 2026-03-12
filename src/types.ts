@@ -25,6 +25,9 @@ export interface Story {
   is_saved?: boolean | number;
   created_at: any;
   source_count?: number;
+  engagement_score?: number;
+  visual_score?: number;
+  trend_signal?: string;
 }
 
 export interface Source {

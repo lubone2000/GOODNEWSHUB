@@ -99,19 +99,14 @@ class ErrorBoundary extends (Component as any) {
 }
 
 const CATEGORY_COLORS: Record<string, { bg: string, text: string, border: string }> = {
-  'Tech': { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
-  'Nature': { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' },
-  'Culture': { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200' },
-  'Politics': { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200' },
-  'Science': { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200' },
-  'Health': { bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200' },
-  'Historical Context': { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200' },
-  'Economic Resilience': { bg: 'bg-cyan-50', text: 'text-cyan-700', border: 'border-cyan-200' },
-  'Space & Frontiers': { bg: 'bg-slate-50', text: 'text-slate-700', border: 'border-slate-200' },
-  'Social Innovation': { bg: 'bg-pink-50', text: 'text-pink-700', border: 'border-pink-200' },
-  'Future Visions': { bg: 'bg-lime-50', text: 'text-lime-700', border: 'border-lime-200' },
-  'Creative Frontiers': { bg: 'bg-fuchsia-50', text: 'text-fuchsia-700', border: 'border-fuchsia-200' },
-  'Urban Evolution': { bg: 'bg-teal-50', text: 'text-teal-700', border: 'border-teal-200' },
+  'Health Wins': { bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200' },
+  'Climate Progress': { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' },
+  'Wildlife Recovery': { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200' },
+  'Science Breakthroughs': { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200' },
+  'Tech Helping People': { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
+  'Local Community Wins': { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200' },
+  'Education Improvements': { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200' },
+  'Accessibility Progress': { bg: 'bg-teal-50', text: 'text-teal-700', border: 'border-teal-200' },
   'Default': { bg: 'bg-gray-50', text: 'text-gray-700', border: 'border-gray-200' }
 };
 
@@ -351,9 +346,10 @@ function AppContent() {
       
       if (newStories && newStories.length > 0) {
         await trackUsage(0.001); // Estimated cost for discovery
+        const batch = writeBatch(db);
+        
         for (const story of newStories) {
           const storyRef = doc(collection(db, 'stories'));
-          const batch = writeBatch(db);
           batch.set(storyRef, {
             ...story,
             uid: user.uid,
@@ -370,10 +366,10 @@ function AppContent() {
               batch.set(sourceRef, { ...source, created_at: serverTimestamp() });
             }
           }
-          await batch.commit();
         }
+        await batch.commit();
       } else {
-        alert(`No new stories found for "${searchQuery}". Try a more specific topic or one of the Quick Search suggestions!`);
+        alert(`No new stories found for "${searchQuery}". Try a more specific topic or one of the Content Pillars!`);
       }
       setAiStatus('connected');
     } catch (error) {
@@ -385,10 +381,8 @@ function AppContent() {
     }
   };
 
-  const handleSave = async (id: string, isSaved: boolean) => {
+  const handleSave = async (docId: string, isSaved: boolean) => {
     try {
-      const story = stories.find(s => s.docId === id || s.id === id);
-      const docId = story?.docId || id;
       await updateDoc(doc(db, 'stories', docId), { is_saved: !isSaved });
     } catch (error) {
       console.error("Failed to save story", error);
@@ -396,13 +390,11 @@ function AppContent() {
     }
   };
 
-  const handleDeleteStory = async (id: string) => {
+  const handleDeleteStory = async (docId: string) => {
     if (!confirm("Are you sure you want to remove this story from your feed?")) return;
     try {
-      const story = stories.find(s => s.docId === id || s.id === id);
-      const docId = story?.docId || id;
       await deleteDoc(doc(db, 'stories', docId));
-      if (selectedStoryId === id) {
+      if (selectedStoryId === docId) {
         setSelectedStoryId(null);
         setSelectedStory(null);
         setActiveTab('feed');
@@ -450,7 +442,16 @@ function AppContent() {
     setLoading(true);
     setAiStatus('processing');
     try {
-      const verification = await geminiService.verifyStory(selectedStory, selectedStory.sources);
+      const sources = selectedStory.sources || [];
+      const verification = await geminiService.verifyStory(selectedStory, sources);
+      
+      if (!verification) {
+        alert("The AI agent was unable to verify this story. This can happen if sources are unreachable or the topic is too obscure. Please try again or check the sources.");
+        setLoading(false);
+        setAiStatus('connected');
+        return;
+      }
+
       await trackUsage(0.005); // Estimated cost for deep verification
       
       const storyRef = doc(db, 'stories', selectedStory.docId);
@@ -477,7 +478,7 @@ function AppContent() {
       }
 
       await batch.commit();
-      handleSelectStory(selectedStory.docId, false);
+      await handleSelectStory(selectedStory.docId, false);
       setAiStatus('connected');
     } catch (error) {
       console.error("Verification failed", error);
@@ -567,7 +568,7 @@ function AppContent() {
     });
 
     try {
-      const storyRef = doc(db, 'stories', selectedStory.id);
+      const storyRef = doc(db, 'stories', selectedStory.docId);
       await updateDoc(storyRef, { packages: updatedPackages });
       setSelectedStory({ ...selectedStory, packages: updatedPackages });
     } catch (error) {
@@ -781,8 +782,8 @@ function AppContent() {
           {activeTab === 'feed' && (
             <>
               <div className="flex flex-wrap gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-[#141414]/30 self-center mr-2">Quick Search:</span>
-                {['Ocean Cleanup', 'Renewable Energy', 'Medical Breakthroughs', 'Wildlife Conservation', 'Social Justice', 'Space Exploration'].map(q => (
+                <span className="text-[10px] font-bold uppercase tracking-widest text-[#141414]/30 self-center mr-2">Content Pillars:</span>
+                {['Health Wins', 'Climate Progress', 'Wildlife Recovery', 'Science Breakthroughs', 'Tech Helping People', 'Local Community Wins', 'Education Improvements', 'Accessibility Progress'].map(q => (
                   <button
                     key={q}
                     onClick={() => { setSearchQuery(q); }}
@@ -823,12 +824,12 @@ function AppContent() {
               >
                 {filteredStories.map((story: Story) => (
                   <StoryCard 
-                    key={story.id} 
+                    key={story.docId || story.id} 
                     story={story} 
-                    onClick={() => { handleSelectStory(story.id); }}
-                    onSave={(e: any) => { e.stopPropagation(); handleSave(story.id, !!story.is_saved); }}
-                    onDelete={(e: any) => { e.stopPropagation(); handleDeleteStory(story.id); }}
-                    active={selectedStoryId === story.id}
+                    onClick={() => { handleSelectStory(story.docId || story.id); }}
+                    onSave={(e: any) => { e.stopPropagation(); handleSave(story.docId || story.id, !!story.is_saved); }}
+                    onDelete={(e: any) => { e.stopPropagation(); handleDeleteStory(story.docId || story.id); }}
+                    active={selectedStoryId === (story.docId || story.id)}
                   />
                 ))}
                 {filteredStories.length === 0 && !loading && (
@@ -863,12 +864,12 @@ function AppContent() {
               >
                 {stories.filter(s => s.is_saved).map((story: Story) => (
                   <StoryCard 
-                    key={story.id} 
+                    key={story.docId || story.id} 
                     story={story} 
-                    onClick={() => { handleSelectStory(story.id); }}
-                    onSave={(e: any) => { e.stopPropagation(); handleSave(story.id, !!story.is_saved); }}
-                    onDelete={(e: any) => { e.stopPropagation(); handleDeleteStory(story.id); }}
-                    active={selectedStoryId === story.id}
+                    onClick={() => { handleSelectStory(story.docId || story.id); }}
+                    onSave={(e: any) => { e.stopPropagation(); handleSave(story.docId || story.id, !!story.is_saved); }}
+                    onDelete={(e: any) => { e.stopPropagation(); handleDeleteStory(story.docId || story.id); }}
+                    active={selectedStoryId === (story.docId || story.id)}
                   />
                 ))}
                 {stories.filter(s => s.is_saved).length === 0 && (
@@ -943,6 +944,31 @@ function AppContent() {
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                   <div className="lg:col-span-2 space-y-8">
+                    {/* Trend & Engagement Layer */}
+                    {selectedStory.trend_signal && (
+                      <div className="bg-indigo-50 border border-indigo-100 p-6 rounded-3xl space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2 text-indigo-600">
+                            <Zap size={18} className="fill-current" />
+                            <h3 className="text-sm font-bold uppercase tracking-widest">Trend Signal</h3>
+                          </div>
+                          <div className="flex items-center space-x-3">
+                            <div className="flex flex-col items-end">
+                              <span className="text-[8px] font-bold uppercase tracking-widest opacity-40">Engagement</span>
+                              <span className="text-xs font-mono font-bold text-indigo-600">{selectedStory.engagement_score || 0}/10</span>
+                            </div>
+                            <div className="flex flex-col items-end">
+                              <span className="text-[8px] font-bold uppercase tracking-widest opacity-40">Visual</span>
+                              <span className="text-xs font-mono font-bold text-rose-600">{selectedStory.visual_score || 0}/10</span>
+                            </div>
+                          </div>
+                        </div>
+                        <p className="text-sm font-serif italic text-indigo-900 leading-relaxed border-l-2 border-indigo-200 pl-4">
+                          "{selectedStory.trend_signal}"
+                        </p>
+                      </div>
+                    )}
+
                     <div className="space-y-6">
                       <h3 className="text-sm font-bold uppercase tracking-widest opacity-40">Verified Claims</h3>
                       <div className="space-y-4">
@@ -960,7 +986,19 @@ function AppContent() {
                       </div>
                     </div>
 
-                    {selectedStory.proof_assets && (
+                    {selectedStory.status !== 'verified' && (
+                      <div className="bg-[#F5F5F0] p-8 rounded-3xl border border-dashed border-[#141414]/10 text-center space-y-4">
+                        <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center mx-auto shadow-sm">
+                          <ShieldCheck size={24} className="opacity-20" />
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-sm font-bold uppercase tracking-widest opacity-40">Verification Required</p>
+                          <p className="text-xs opacity-40 max-w-xs mx-auto">Run the Verification Agent to generate the Confidence Meter, Source Badges, and Claim Cards.</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedStory.status === 'verified' && selectedStory.proof_assets && (
                       <div className="space-y-6">
                         <h3 className="text-sm font-bold uppercase tracking-widest opacity-40">On-Screen Proof Layer</h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -988,6 +1026,9 @@ function AppContent() {
                                   {badge}
                                 </span>
                               ))}
+                              {(!selectedStory.proof_assets.source_badges || selectedStory.proof_assets.source_badges.length === 0) && (
+                                <span className="text-[10px] opacity-40 italic">No badges identified</span>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -1005,7 +1046,19 @@ function AppContent() {
                   </div>
 
                   <div className="space-y-8">
-                    {selectedStory.editorial_scores && (
+                    {selectedStory.status !== 'verified' && (
+                      <div className="bg-white p-6 rounded-3xl border border-[#141414]/5 space-y-4 opacity-50">
+                        <h3 className="text-sm font-bold uppercase tracking-widest opacity-40">Editorial Potential</h3>
+                        <p className="text-[10px] italic">Scores will be generated after verification.</p>
+                        <div className="space-y-3">
+                          {[1, 2, 3].map(i => (
+                            <div key={i} className="h-1 w-full bg-[#F5F5F0] rounded-full" />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedStory.status === 'verified' && selectedStory.editorial_scores && (
                       <div className="bg-white p-6 rounded-3xl border border-[#141414]/5 space-y-6">
                         <h3 className="text-sm font-bold uppercase tracking-widest opacity-40">Editorial Potential</h3>
                         <div className="space-y-4">
@@ -1021,12 +1074,12 @@ function AppContent() {
                             <div key={i} className="space-y-1">
                               <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest">
                                 <span className="opacity-40">{score.label}</span>
-                                <span>{score.value}/10</span>
+                                <span>{score.value || 0}/10</span>
                               </div>
                               <div className="h-1 w-full bg-[#F5F5F0] rounded-full overflow-hidden">
                                 <div 
-                                  className={`h-full transition-all duration-1000 ${score.value > 7 ? 'bg-emerald-400' : score.value > 4 ? 'bg-amber-400' : 'bg-rose-400'}`}
-                                  style={{ width: `${score.value * 10}%` }}
+                                  className={`h-full transition-all duration-1000 ${(score.value || 0) > 7 ? 'bg-emerald-400' : (score.value || 0) > 4 ? 'bg-amber-400' : 'bg-rose-400'}`}
+                                  style={{ width: `${(score.value || 0) * 10}%` }}
                                 />
                               </div>
                             </div>
@@ -1479,7 +1532,19 @@ function AppContent() {
         <div className="fixed inset-0 bg-white/60 backdrop-blur-sm z-[100] flex items-center justify-center">
           <div className="flex flex-col items-center space-y-4">
             <RefreshCw className="animate-spin text-[#141414]" size={32} />
-            <span className="text-xs font-bold uppercase tracking-widest">Processing...</span>
+            <div className="flex flex-col items-center space-y-1">
+              <span className="text-xs font-bold uppercase tracking-widest">Processing...</span>
+              <p className="text-[8px] opacity-40 uppercase tracking-widest">This may take up to 30 seconds</p>
+            </div>
+            <button 
+              onClick={() => {
+                setLoading(false);
+                setAiStatus('connected');
+              }}
+              className="px-4 py-2 bg-[#141414] text-white rounded-full text-[10px] font-bold uppercase tracking-widest hover:bg-opacity-80 transition-all"
+            >
+              Cancel
+            </button>
           </div>
         </div>
       )}
@@ -1529,12 +1594,19 @@ function StoryCard({ story, onClick, onSave, onDelete, active }: any) {
       </div>
 
       <div className="flex justify-between items-start mb-4 pr-8">
-        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest border ${color.bg} ${color.text} ${color.border}`}>
-          {story.category}
-        </span>
+        <div className="flex flex-col space-y-1">
+          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest border w-fit ${color.bg} ${color.text} ${color.border}`}>
+            {story.category}
+          </span>
+          {story.trend_signal && (
+            <span className="text-[8px] font-bold uppercase tracking-widest text-indigo-600 flex items-center">
+              <Zap size={8} className="mr-1 fill-current" /> {story.trend_signal}
+            </span>
+          )}
+        </div>
         <div className="flex items-center space-x-1">
-          <span className="text-xs font-mono">{story.verified_score}</span>
-          <ShieldCheck size={14} className={story.verified_score > 70 ? 'text-emerald-500' : 'text-amber-500'} />
+          <span className="text-xs font-mono">{story.verified_score || 0}</span>
+          <ShieldCheck size={14} className={(story.verified_score || 0) > 70 ? 'text-emerald-500' : 'text-amber-500'} />
         </div>
       </div>
       <div className="flex items-center space-x-2 mb-2">
@@ -1545,13 +1617,27 @@ function StoryCard({ story, onClick, onSave, onDelete, active }: any) {
           </span>
         )}
       </div>
-      <p className="text-xs text-[#141414]/60 line-clamp-3 mb-6 leading-relaxed">{story.summary}</p>
+      <p className="text-xs text-[#141414]/60 line-clamp-3 mb-4 leading-relaxed">{story.summary}</p>
+      
+      {(story.engagement_score || story.visual_score) && (
+        <div className="flex items-center space-x-4 mb-4">
+          <div className="flex items-center space-x-1">
+            <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+            <span className="text-[9px] font-bold uppercase tracking-widest opacity-60">Engagement: {story.engagement_score}/10</span>
+          </div>
+          <div className="flex items-center space-x-1">
+            <div className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+            <span className="text-[9px] font-bold uppercase tracking-widest opacity-60">Visual: {story.visual_score}/10</span>
+          </div>
+        </div>
+      )}
+
       <div className="flex justify-between items-center pt-4 border-t border-[#141414]/5">
         <div className="flex items-center text-[10px] font-bold uppercase tracking-widest opacity-40">
           <Globe size={12} className="mr-1" /> {story.region}
         </div>
         <div className="text-[10px] font-mono opacity-40">
-          {story.source_count} SOURCES
+          {story.source_count || 0} SOURCES
         </div>
       </div>
     </motion.div>

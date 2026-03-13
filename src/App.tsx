@@ -338,11 +338,12 @@ function AppContent() {
     }
   };
 
-  const handleDiscover = async () => {
+  const handleDiscover = async (queryOverride?: any) => {
     if (!user) return;
     setLoading(true);
     setAiStatus('processing');
-    const fullQuery = selectedRegion ? `${searchQuery} in ${selectedRegion}` : searchQuery;
+    const currentQuery = typeof queryOverride === 'string' ? queryOverride : searchQuery;
+    const fullQuery = selectedRegion ? `${currentQuery} in ${selectedRegion}` : currentQuery;
     try {
       const existingTitles = stories.map(s => s.title);
       const newStories = await geminiService.discoverNews(fullQuery, existingTitles);
@@ -372,7 +373,7 @@ function AppContent() {
         }
         await batch.commit();
       } else {
-        alert(`No new stories found for "${searchQuery}". Try a more specific topic or one of the Content Pillars!`);
+        alert(`No new stories found for "${fullQuery}". Try a more specific topic or one of the Content Pillars!`);
       }
       setAiStatus('connected');
     } catch (error) {
@@ -452,13 +453,22 @@ function AppContent() {
 
   const handleVerify = async () => {
     if (!selectedStory || !user) return;
+    
+    if (!selectedStory.docId) {
+      console.error("Cannot verify story: missing docId", selectedStory);
+      alert("This story record is incomplete and cannot be verified. Please try discovering it again.");
+      return;
+    }
+
     setLoading(true);
     setAiStatus('processing');
     try {
+      console.log("Starting verification for story:", selectedStory.docId);
       const sources = selectedStory.sources || [];
       const verification = await geminiService.verifyStory(selectedStory, sources);
       
       if (!verification) {
+        console.error("Verification agent returned null for story:", selectedStory.docId);
         alert("The AI agent was unable to verify this story. This can happen if sources are unreachable or the topic is too obscure. Please try again or check the sources.");
         setLoading(false);
         setAiStatus('connected');
@@ -822,11 +832,7 @@ function AppContent() {
                     key={q}
                     onClick={() => { 
                       setSearchQuery(q);
-                      // Trigger discovery immediately when a pillar is clicked
-                      setTimeout(() => {
-                        const discoverBtn = document.getElementById('discover-btn');
-                        if (discoverBtn) discoverBtn.click();
-                      }, 100);
+                      handleDiscover(q);
                     }}
                     className="px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest bg-[#141414]/5 text-[#141414]/60 hover:bg-[#141414] hover:text-white transition-all"
                   >

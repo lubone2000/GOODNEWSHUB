@@ -88,13 +88,13 @@ service cloud.firestore {
       allow delete: if isDocOwner() || isAdmin();
 
       match /sources/{sourceId} {
-        allow read, write: if isDocOwner() || isAdmin();
+        allow read, write: if (isAuthenticated() && get(/databases/$(database)/documents/stories/$(storyId)).data.uid == request.auth.uid) || isAdmin();
       }
       match /claims/{claimId} {
-        allow read, write: if isDocOwner() || isAdmin();
+        allow read, write: if (isAuthenticated() && get(/databases/$(database)/documents/stories/$(storyId)).data.uid == request.auth.uid) || isAdmin();
       }
       match /packages/{packageId} {
-        allow read, write: if isDocOwner() || isAdmin();
+        allow read, write: if (isAuthenticated() && get(/databases/$(database)/documents/stories/$(storyId)).data.uid == request.auth.uid) || isAdmin();
       }
     }
 

@@ -3,14 +3,27 @@ import { GoogleGenAI, Type } from "@google/genai";
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
 const cleanJson = (text: string) => {
-  // Remove markdown code blocks if present
+  if (!text) return "";
   let cleaned = text.trim();
-  if (cleaned.startsWith("```json")) {
-    cleaned = cleaned.replace(/^```json/, "").replace(/```$/, "");
-  } else if (cleaned.startsWith("```")) {
-    cleaned = cleaned.replace(/^```/, "").replace(/```$/, "");
+  
+  // Remove markdown code blocks if present
+  cleaned = cleaned.replace(/^```json\s*/, "").replace(/\s*```$/, "");
+  cleaned = cleaned.replace(/^```\s*/, "").replace(/\s*```$/, "");
+  
+  // If there's still text around the JSON, try to extract the first { ... } or [ ... ] block
+  const firstBrace = cleaned.indexOf('{');
+  const lastBrace = cleaned.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    return cleaned.substring(firstBrace, lastBrace + 1);
   }
-  return cleaned.trim();
+  
+  const firstBracket = cleaned.indexOf('[');
+  const lastBracket = cleaned.lastIndexOf(']');
+  if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
+    return cleaned.substring(firstBracket, lastBracket + 1);
+  }
+
+  return cleaned;
 };
 
 export const geminiService = {
@@ -39,6 +52,7 @@ export const geminiService = {
         ? `\n\nCRITICAL: DO NOT include stories that are the same as or very similar to these existing titles: ${existingTitles.slice(-50).join(", ")}`
         : "";
 
+      console.log("Discovering news for query:", query);
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: `You are a world-class Engagement-Aware News & Fact Discovery Agent. Your goal is to find "Socially Potent" positive news stories and mind-blowing positive facts that are primed for high performance on TikTok and Instagram.
@@ -119,8 +133,16 @@ export const geminiService = {
         }
       });
       const text = response.text;
+      console.log("Discovery response text length:", text?.length || 0);
       if (!text) return [];
-      return JSON.parse(cleanJson(text));
+      try {
+        const parsed = JSON.parse(cleanJson(text));
+        console.log("Parsed stories count:", parsed.length);
+        return parsed;
+      } catch (e) {
+        console.error("Failed to parse discovery JSON:", e);
+        return [];
+      }
     } catch (error) {
       console.error("Error in discoverNews:", error);
       return [];
@@ -142,7 +164,7 @@ export const geminiService = {
       );
 
       const aiPromise = ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-3.1-pro-preview",
         contents: `You are a Senior Fact-Checking & Editorial Agent. Your task is to verify the following news story and provide a structured assessment.
 
         STORY TO VERIFY:

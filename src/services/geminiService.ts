@@ -138,7 +138,7 @@ export const geminiService = {
 
       // Create a timeout promise
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("Verification timed out")), 60000)
+        setTimeout(() => reject(new Error("Verification timed out")), 90000)
       );
 
       const aiPromise = ai.models.generateContent({
@@ -159,44 +159,74 @@ export const geminiService = {
         4. PROOF ASSETS: Create short "Claim Cards" (max 60 chars) and "Source Badges" (e.g., "Peer Reviewed").
 
         OUTPUT FORMAT:
-        You MUST return your response as a single valid JSON object. Do not include any text before or after the JSON.
-        
-        JSON Structure:
-        {
-          "score": number,
-          "claims": [{"text": "string", "status": "verified|unverified|debunked"}],
-          "flags": ["string"],
-          "editorial_scores": {
-            "novelty": number,
-            "emotional_lift": number,
-            "shareability": number,
-            "visual_potential": number,
-            "audience_fit": number,
-            "shelf_life": number,
-            "explainer_needed": number
-          },
-          "proof_assets": {
-            "claim_cards": ["string"],
-            "source_badges": ["string"],
-            "verification_summary": "string"
-          }
-        }`,
+        You MUST return your response as a single valid JSON object.`,
         config: {
           tools: [{ googleSearch: {} }],
-          // We remove responseMimeType and responseSchema to avoid conflicts with grounding citations
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              score: { type: Type.INTEGER },
+              claims: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    text: { type: Type.STRING },
+                    status: { type: Type.STRING, enum: ["verified", "unverified", "debunked"] }
+                  },
+                  required: ["text", "status"]
+                }
+              },
+              flags: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING }
+              },
+              editorial_scores: {
+                type: Type.OBJECT,
+                properties: {
+                  novelty: { type: Type.INTEGER },
+                  emotional_lift: { type: Type.INTEGER },
+                  shareability: { type: Type.INTEGER },
+                  visual_potential: { type: Type.INTEGER },
+                  audience_fit: { type: Type.INTEGER },
+                  shelf_life: { type: Type.INTEGER },
+                  explainer_needed: { type: Type.INTEGER }
+                },
+                required: ["novelty", "emotional_lift", "shareability", "visual_potential", "audience_fit", "shelf_life", "explainer_needed"]
+              },
+              proof_assets: {
+                type: Type.OBJECT,
+                properties: {
+                  claim_cards: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING }
+                  },
+                  source_badges: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING }
+                  },
+                  verification_summary: { type: Type.STRING }
+                },
+                required: ["claim_cards", "source_badges", "verification_summary"]
+              }
+            },
+            required: ["score", "claims", "editorial_scores", "proof_assets"]
+          }
         }
       });
 
       const response: any = await Promise.race([aiPromise, timeoutPromise]);
       const text = response.text;
       if (!text) {
-        console.error("Empty response from verification agent");
+        console.error("Empty response from verification agent. Full response:", response);
         return null;
       }
 
       const cleaned = cleanJson(text);
       try {
         const data = JSON.parse(cleaned);
+        console.log("Verification successful for:", story.title);
         
         // Ensure editorial_scores has defaults to prevent UI issues
         if (!data.editorial_scores) {
@@ -229,7 +259,8 @@ export const geminiService = {
 
         return data;
       } catch (parseError) {
-        console.error("Failed to parse verification JSON:", cleaned);
+        console.error("Failed to parse verification JSON. Cleaned text:", cleaned);
+        console.error("Parse error details:", parseError);
         // Attempt a more aggressive cleanup if standard parsing fails
         const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
         if (jsonMatch) {

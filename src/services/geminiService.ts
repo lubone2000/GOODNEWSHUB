@@ -1,6 +1,12 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+const getAi = () => {
+  const apiKey = process.env.GEMINI_API_KEY || (import.meta as any).env?.VITE_GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error("API key is missing. Please ensure GEMINI_API_KEY or VITE_GEMINI_API_KEY is set in your environment.");
+  }
+  return new GoogleGenAI({ apiKey });
+};
 
 const cleanJson = (text: string) => {
   if (!text) return "";
@@ -53,7 +59,7 @@ export const geminiService = {
         : "";
 
       console.log("Discovering news for query:", query);
-      const response = await ai.models.generateContent({
+      const response = await getAi().models.generateContent({
         model: "gemini-3-flash-preview",
         contents: `You are a world-class Engagement-Aware News & Fact Discovery Agent. Your goal is to find "Socially Potent" positive news stories and mind-blowing positive facts that are primed for high performance on TikTok and Instagram.
 
@@ -163,7 +169,7 @@ export const geminiService = {
         setTimeout(() => reject(new Error("Verification timed out")), 90000)
       );
 
-      const aiPromise = ai.models.generateContent({
+      const aiPromise = getAi().models.generateContent({
         model: "gemini-3.1-pro-preview",
         contents: `You are a Senior Fact-Checking & Editorial Agent. Your task is to verify the following news story and provide a structured assessment.
 
@@ -303,7 +309,7 @@ export const geminiService = {
   async generateContent(story: any, claims: any[], platform: 'tiktok' | 'instagram', style: string = "Professional", customInstruction: string = "") {
     try {
       const claimsText = claims.map(c => `- ${c.text}`).join("\n");
-      const response = await ai.models.generateContent({
+      const response = await getAi().models.generateContent({
         model: "gemini-3.1-pro-preview",
         contents: `Create a platform-native short-form content pack for ${platform} for this verified positive news story.
         
@@ -373,7 +379,7 @@ export const geminiService = {
         setTimeout(() => reject(new Error("Image generation timed out")), 60000)
       );
 
-      const aiPromise = ai.models.generateContent({
+      const aiPromise = getAi().models.generateContent({
         model: 'gemini-2.5-flash-image',
         contents: {
           parts: [

@@ -47,6 +47,7 @@ import {
   addDoc, 
   serverTimestamp,
   getDocs,
+  getDoc,
   writeBatch,
   increment
 } from 'firebase/firestore';
@@ -107,6 +108,8 @@ const CATEGORY_COLORS: Record<string, { bg: string, text: string, border: string
   'Local Community Wins': { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200' },
   'Education Improvements': { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200' },
   'Accessibility Progress': { bg: 'bg-teal-50', text: 'text-teal-700', border: 'border-teal-200' },
+  'Evergreen Facts': { bg: 'bg-violet-50', text: 'text-violet-700', border: 'border-violet-200' },
+  'Historical Wins': { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200' },
   'Default': { bg: 'bg-gray-50', text: 'text-gray-700', border: 'border-gray-200' }
 };
 
@@ -409,10 +412,20 @@ function AppContent() {
     setSelectedStoryId(id);
     setLoading(true);
     try {
-      const story = stories.find(s => s.docId === id || s.id === id);
-      const docId = story?.docId || id;
+      // Find the story in the local list first for quick access to docId
+      const localStory = stories.find(s => s.docId === id || s.id === id);
+      const docId = localStory?.docId || id;
       
       const storyRef = doc(db, 'stories', docId);
+      
+      // Fetch the main story document directly to ensure we have the latest status/scores
+      const storySnap = await getDoc(storyRef);
+      if (!storySnap.exists()) {
+        console.error("Story document not found");
+        return;
+      }
+      
+      const storyData = { ...storySnap.data(), docId: storySnap.id };
       
       // Fetch subcollections
       const sourcesSnap = await getDocs(collection(storyRef, 'sources'));
@@ -420,7 +433,7 @@ function AppContent() {
       const packagesSnap = await getDocs(collection(storyRef, 'packages'));
 
       const fullStory = {
-        ...story,
+        ...storyData,
         sources: sourcesSnap.docs.map(d => d.data()),
         claims: claimsSnap.docs.map(d => d.data()),
         packages: packagesSnap.docs.map(d => ({ ...d.data(), docId: d.id }))
@@ -599,14 +612,25 @@ function AppContent() {
     setAiStatus('processing');
     setGeneratedImages([null, null, null]);
     try {
-      const promises = [0, 1, 2].map(i => geminiService.generateImage(prompt, i));
-      const results = await Promise.all(promises);
+      // Add a timeout for the whole batch
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error("Batch generation timed out")), 70000)
+      );
+      
+      const generationPromise = (async () => {
+        const promises = [0, 1, 2].map(i => geminiService.generateImage(prompt, i));
+        return await Promise.all(promises);
+      })();
+
+      const results = await Promise.race([generationPromise, timeoutPromise]) as (string | null)[];
+      
       await trackUsage(0.03); // Estimated cost for 3 image generations (0.01 each)
       setGeneratedImages(results);
       setAiStatus('connected');
     } catch (error) {
       console.error("Image generation failed", error);
       setAiStatus('error');
+      alert("Image generation timed out or failed. Please try a simpler prompt.");
     } finally {
       setLoading(false);
     }
@@ -616,10 +640,19 @@ function AppContent() {
     if (!selectedStory || !user) return;
     setLoading(true);
     try {
-      // Upload to Firebase Storage
-      const storageRef = ref(storage, `visuals/${user.uid}/${selectedStory.docId}/${packageDocId}.png`);
-      await uploadString(storageRef, imageUrl, 'data_url');
-      const downloadUrl = await getDownloadURL(storageRef);
+      // Create a timeout for the upload process
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error("Upload timed out")), 30000)
+      );
+
+      const uploadPromise = (async () => {
+        // Upload to Firebase Storage
+        const storageRef = ref(storage, `visuals/${user.uid}/${selectedStory.docId}/${packageDocId}.png`);
+        await uploadString(storageRef, imageUrl, 'data_url');
+        return await getDownloadURL(storageRef);
+      })();
+
+      const downloadUrl = await Promise.race([uploadPromise, timeoutPromise]) as string;
 
       // Update package in Firestore
       await updateDoc(doc(db, 'stories', selectedStory.docId, 'packages', packageDocId), {
@@ -630,7 +663,7 @@ function AppContent() {
       handleSelectStory(selectedStory.docId, false);
     } catch (error) {
       console.error("Failed to save image", error);
-      alert("Failed to save image. Check console.");
+      alert("Failed to save image. The file might be too large or the connection timed out.");
     } finally {
       setLoading(false);
     }
@@ -763,6 +796,7 @@ function AppContent() {
                     </button>
                   )}
                   <button 
+                    id="discover-btn"
                     onClick={handleDiscover}
                     disabled={loading}
                     className="ml-4 text-xs font-bold uppercase tracking-wider hover:opacity-70 disabled:opacity-30 whitespace-nowrap"
@@ -783,10 +817,17 @@ function AppContent() {
             <>
               <div className="flex flex-wrap gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide">
                 <span className="text-[10px] font-bold uppercase tracking-widest text-[#141414]/30 self-center mr-2">Content Pillars:</span>
-                {['Health Wins', 'Climate Progress', 'Wildlife Recovery', 'Science Breakthroughs', 'Tech Helping People', 'Local Community Wins', 'Education Improvements', 'Accessibility Progress'].map(q => (
+                {['Health Wins', 'Climate Progress', 'Wildlife Recovery', 'Science Breakthroughs', 'Tech Helping People', 'Local Community Wins', 'Education Improvements', 'Accessibility Progress', 'Evergreen Facts', 'Historical Wins'].map(q => (
                   <button
                     key={q}
-                    onClick={() => { setSearchQuery(q); }}
+                    onClick={() => { 
+                      setSearchQuery(q);
+                      // Trigger discovery immediately when a pillar is clicked
+                      setTimeout(() => {
+                        const discoverBtn = document.getElementById('discover-btn');
+                        if (discoverBtn) discoverBtn.click();
+                      }, 100);
+                    }}
                     className="px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest bg-[#141414]/5 text-[#141414]/60 hover:bg-[#141414] hover:text-white transition-all"
                   >
                     {q}

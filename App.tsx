@@ -1016,6 +1016,9 @@ function AppContent() {
             {activeTab === 'export' && "Export Center"}
           </h1>
           <div className="flex items-center space-x-6">
+            <div className="hidden sm:block">
+              <span className="text-[8px] font-bold uppercase tracking-[0.2em] opacity-20 bg-[#141414]/5 px-2 py-1 rounded">v0.0.4-PROD</span>
+            </div>
             {/* AI Status & Spend */}
             <div className="hidden md:flex items-center space-x-4 px-4 py-2 bg-[#141414]/5 rounded-full border border-[#141414]/5">
               <div className="flex items-center space-x-2 border-r border-[#141414]/10 pr-4">

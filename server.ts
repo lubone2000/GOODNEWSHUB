@@ -34,19 +34,26 @@ async function startServer() {
     const archive = archiver('zip', { zlib: { level: 9 } });
     res.attachment('sunny-signals-project.zip');
 
-    archive.on('error', (err) => res.status(500).send({ error: err.message }));
+    archive.on('error', (err) => {
+      console.error('Archiver error:', err);
+      res.status(500).send({ error: err.message });
+    });
+    
     archive.pipe(res);
 
     // Add files but ignore bulky/hidden ones
+    // Added 'dot: true' to ensure .env.example and other config files are included
     archive.glob('**/*', {
       cwd: process.cwd(),
+      dot: true,
       ignore: [
         'node_modules/**',
         'dist/**',
         '.git/**',
         '*.zip',
         '.next/**',
-        'build/**'
+        'build/**',
+        '.env' // Never export the actual .env with secrets
       ]
     });
 

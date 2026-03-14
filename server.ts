@@ -2,6 +2,8 @@ import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
+import archiver from "archiver";
+import fs from "fs";
 
 dotenv.config();
 
@@ -25,6 +27,30 @@ async function startServer() {
   app.get("/healthz", (req, res) => res.status(200).send("OK"));
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", time: new Date().toISOString() });
+  });
+
+  // Project Export Endpoint (Emergency Sync Alternative)
+  app.get("/api/export-project", (req, res) => {
+    const archive = archiver('zip', { zlib: { level: 9 } });
+    res.attachment('sunny-signals-project.zip');
+
+    archive.on('error', (err) => res.status(500).send({ error: err.message }));
+    archive.pipe(res);
+
+    // Add files but ignore bulky/hidden ones
+    archive.glob('**/*', {
+      cwd: process.cwd(),
+      ignore: [
+        'node_modules/**',
+        'dist/**',
+        '.git/**',
+        '*.zip',
+        '.next/**',
+        'build/**'
+      ]
+    });
+
+    archive.finalize();
   });
 
   // Logging middleware

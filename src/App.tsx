@@ -971,8 +971,8 @@ function AppContent() {
             GS
           </div>
           <div className="space-y-2">
-            <h1 className="text-4xl font-serif italic">Good News Studio</h1>
-            <p className="text-[#141414]/60">Your AI-powered newsroom for positive impact.</p>
+            <h1 className="text-4xl font-serif italic">Sunny Signals</h1>
+            <p className="text-[#141414]/60">The bright side of news.</p>
           </div>
           <button 
             onClick={handleLogin}
@@ -1016,9 +1016,6 @@ function AppContent() {
             {activeTab === 'export' && "Export Center"}
           </h1>
           <div className="flex items-center space-x-6">
-            <div className="block">
-              <span className="text-[8px] font-bold uppercase tracking-[0.2em] text-rose-600 bg-rose-50 px-2 py-1 rounded border border-rose-100">v0.0.4-PROD</span>
-            </div>
             {/* AI Status & Spend */}
             <div className="hidden md:flex items-center space-x-4 px-4 py-2 bg-[#141414]/5 rounded-full border border-[#141414]/5">
               <div className="flex items-center space-x-2 border-r border-[#141414]/10 pr-4">
@@ -2185,14 +2182,6 @@ function AppContent() {
                     <button className="w-full py-4 border border-[#141414]/10 rounded-2xl font-bold uppercase tracking-widest text-xs hover:bg-[#F5F5F0] transition-all">
                       Download Full Asset Bundle (JSON + Text)
                     </button>
-                    <a 
-                      href="/api/export-project" 
-                      download 
-                      className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-bold uppercase tracking-widest text-xs hover:bg-emerald-700 transition-all flex items-center justify-center"
-                    >
-                      <Download size={16} className="mr-2" />
-                      Download Full Project ZIP (GitHub Alternative)
-                    </a>
                     <button 
                       onClick={handlePublish}
                       disabled={selectedStory.status === 'published'}

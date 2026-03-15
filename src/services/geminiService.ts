@@ -189,7 +189,12 @@ export const geminiService = {
         1. SEARCH & VERIFY: Use Google Search to find at least 2-3 high-authority sources (university journals, government reports, major news outlets).
         2. EXTRACT CLAIMS: Identify 3-5 specific, verifiable claims.
         3. FIND FACTUAL IMAGES: Find URLs for 2-3 real-world images that provide visual proof or context for this story (e.g., photos of the event, the people involved, or the location). 
-           CRITICAL: You MUST provide DIRECT image URLs (ending in .jpg, .png, .webp, etc.) whenever possible. Avoid links to news articles or gallery pages. If you cannot find a direct image URL, provide the most relevant source URL.
+           CRITICAL RULES FOR IMAGES:
+           - You MUST provide DIRECT image URLs (must end in .jpg, .jpeg, .png, .webp, or .avif).
+           - DO NOT provide URLs to news articles, HTML pages, or social media posts.
+           - If you find an image on a news site, try to extract the actual image source URL from the <img> tag.
+           - If you cannot find a direct image URL, DO NOT include it in the 'fact_images' array. It is better to have 0 images than broken links.
+           - High-authority sources like Wikipedia, Wikimedia Commons, or official organization media kits are preferred.
         4. SCORE: Provide a verification score (0-100) and editorial scores (1-10).
         5. PROOF ASSETS: Create short "Claim Cards" (max 60 chars) and "Source Badges" (e.g., "Peer Reviewed").
 

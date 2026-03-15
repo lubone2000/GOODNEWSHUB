@@ -36,19 +36,32 @@ async function startServer() {
     }
 
     try {
+      console.log(`Proxying image: ${imageUrl}`);
       const response = await axios.get(imageUrl, {
         responseType: "arraybuffer",
+        timeout: 15000,
+        maxRedirects: 5,
         headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+          "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+          "Accept-Language": "en-US,en;q=0.9",
+          "Referer": new URL(imageUrl).origin,
         },
       });
 
       const contentType = response.headers["content-type"];
-      res.setHeader("Content-Type", contentType);
+      if (contentType) {
+        res.setHeader("Content-Type", contentType);
+      }
+      
+      // Cache for 1 hour
+      res.setHeader("Cache-Control", "public, max-age=3600");
       res.send(response.data);
-    } catch (error) {
-      console.error("Proxy error:", error);
-      res.status(500).send("Failed to fetch image");
+    } catch (error: any) {
+      console.error(`Proxy error for ${imageUrl}:`, error.message);
+      // Return a more descriptive error if possible
+      const status = error.response?.status || 500;
+      res.status(status).send(`Failed to fetch image: ${error.message}`);
     }
   });
 

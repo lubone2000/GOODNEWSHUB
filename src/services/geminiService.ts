@@ -1,4 +1,6 @@
+// Sunny Signals Worldwide - Service Version 1.0.1
 import { GoogleGenAI, Type } from "@google/genai";
+import axios from "axios";
 
 const getAi = () => {
   const apiKey = process.env.GEMINI_API_KEY || (import.meta as any).env?.VITE_GEMINI_API_KEY;
@@ -13,19 +15,22 @@ const cleanJson = (text: string) => {
   let cleaned = text.trim();
   
   // Remove markdown code blocks if present
-  cleaned = cleaned.replace(/^```json\s*/, "").replace(/\s*```$/, "");
-  cleaned = cleaned.replace(/^```\s*/, "").replace(/\s*```$/, "");
+  cleaned = cleaned.replace(/^```json\s*/g, "").replace(/\s*```$/g, "");
+  cleaned = cleaned.replace(/^```\s*/g, "").replace(/\s*```$/g, "");
   
-  // If there's still text around the JSON, try to extract the first { ... } or [ ... ] block
+  // Find the first and last structural characters
   const firstBrace = cleaned.indexOf('{');
   const lastBrace = cleaned.lastIndexOf('}');
-  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-    return cleaned.substring(firstBrace, lastBrace + 1);
-  }
-  
   const firstBracket = cleaned.indexOf('[');
   const lastBracket = cleaned.lastIndexOf(']');
-  if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
+
+  // Determine which structure starts first
+  const hasBraces = firstBrace !== -1 && lastBrace !== -1;
+  const hasBrackets = firstBracket !== -1 && lastBracket !== -1;
+
+  if (hasBraces && (!hasBrackets || firstBrace < firstBracket)) {
+    return cleaned.substring(firstBrace, lastBrace + 1);
+  } else if (hasBrackets) {
     return cleaned.substring(firstBracket, lastBracket + 1);
   }
 
@@ -306,15 +311,18 @@ export const geminiService = {
     }
   },
 
-  async generateContent(story: any, claims: any[], platform: 'tiktok' | 'instagram', style: string = "Professional", customInstruction: string = "") {
+  async generateContent(story: any, claims: any[], platform: 'tiktok' | 'instagram', style: string = "Professional", customInstruction: string = "", customIdea: string = "") {
     try {
-      const claimsText = claims.map(c => `- ${c.text}`).join("\n");
+      const claimsText = (claims || []).map(c => `- ${c.claim_text || c.text}`).join("\n");
+      console.log(`Generating ${platform} content for story: ${story.title}`);
+      
       const response = await getAi().models.generateContent({
-        model: "gemini-3.1-pro-preview",
-        contents: `Create a platform-native short-form content pack for ${platform} for this verified positive news story.
+        model: "gemini-3-flash-preview",
+        contents: `Create a comprehensive ${platform} content pack for this verified news story.
         
         Story: ${story.title}
         Summary: ${story.summary}
+        ${customIdea ? `Creative Override: ${customIdea} (Use this as the creative angle/theme for the content while keeping the facts from the story)` : ""}
         Verified Claims:
         ${claimsText}
 
@@ -322,45 +330,179 @@ export const geminiService = {
         ${customInstruction ? `STEERING INSTRUCTION: ${customInstruction}` : ""}
         
         REQUIRED OUTPUTS:
-        1. 15-second hook clip: Ultra-short attention grabber. Strong first-line hook. One key takeaway only.
-        2. 30-45 second Reel/TikTok script: Concise story version optimized for narration/voiceover. Feels natural for ${platform}.
-        3. 90-second explainer: Fuller version for context. Explains what happened, why it matters, and why it is credible.
+        1. Image Carousel (3 Slides):
+           - Each slide needs a clear text overlay and a detailed visual prompt for image generation.
+           - For each slide, provide 3 variations of the visual prompt (different styles/angles).
+        2. 20-Second Reel (5 Shots, 4s each):
+           - A cohesive narrative.
+           - Shots 1-4: Detailed cinematic visual prompts and short narration scripts.
+           - For each shot, provide 3 variations of the visual prompt.
+           - Shot 5 (MANDATORY): A "Typography/Facts" slide. 
+             - Visual Prompt: "A clean, modern typography slide with a vibrant background, professional layout."
+             - Script: Must include:
+               1. Very short bulleted facts from the story.
+               2. Source attribution (e.g., "Source: ${story.region} news").
+               3. Channel Brand: "Sunny Signals Worldwide - The bright side of news".
 
-        For each output, provide:
-        - hook: The opening line.
-        - script: The full spoken script.
-        - visual_description: Description of what should be on screen.
-
-        Return JSON with an array of 3 objects (one for each format), each containing: 
-        format: (one of "15s_hook", "45s_reel", "90s_explainer"),
-        platform: "${platform}",
-        hook: (The opening line),
-        script: (The full script), 
-        visual_description: (Visual instructions).`,
+        Return ONLY a valid JSON object with:
+        {
+          "format": "${platform}_pack",
+          "platform": "${platform}",
+          "carousel": {
+            "slides": [
+              { "slide_number": 1, "text": "Slide text", "visual_prompt": "Detailed image prompt" },
+              { "slide_number": 2, "text": "Slide text", "visual_prompt": "Detailed image prompt" },
+              { "slide_number": 3, "text": "Slide text", "visual_prompt": "Detailed image prompt" }
+            ]
+          },
+          "reel": {
+            "story_text": "Full narrative text including the final facts summary",
+            "shots": [
+              { "shot_number": 1, "image_prompt": "Cinematic prompt", "script": "Narration" },
+              { "shot_number": 2, "image_prompt": "Cinematic prompt", "script": "Narration" },
+              { "shot_number": 3, "image_prompt": "Cinematic prompt", "script": "Narration" },
+              { "shot_number": 4, "image_prompt": "Cinematic prompt", "script": "Narration" },
+              { "shot_number": 5, "image_prompt": "Typography slide prompt", "script": "Facts summary + Source + Sunny Signals Worldwide - The bright side of news" }
+            ]
+          }
+        }`,
         config: {
           responseMimeType: "application/json",
           responseSchema: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                format: { type: Type.STRING },
-                platform: { type: Type.STRING },
-                hook: { type: Type.STRING },
-                script: { type: Type.STRING },
-                visual_description: { type: Type.STRING }
+            type: Type.OBJECT,
+            properties: {
+              format: { type: Type.STRING },
+              platform: { type: Type.STRING },
+              carousel: {
+                type: Type.OBJECT,
+                properties: {
+                  slides: {
+                    type: Type.ARRAY,
+                    items: {
+                      type: Type.OBJECT,
+                      properties: {
+                        slide_number: { type: Type.INTEGER },
+                        text: { type: Type.STRING },
+                        visual_prompt: { type: Type.STRING },
+                        prompt_variations: {
+                          type: Type.ARRAY,
+                          items: { type: Type.STRING }
+                        }
+                      },
+                      required: ["slide_number", "text", "visual_prompt", "prompt_variations"]
+                    }
+                  }
+                },
+                required: ["slides"]
               },
-              required: ["format", "platform", "script"]
-            }
+              reel: {
+                type: Type.OBJECT,
+                properties: {
+                  story_text: { type: Type.STRING },
+                  shots: {
+                    type: Type.ARRAY,
+                    items: {
+                      type: Type.OBJECT,
+                      properties: {
+                        shot_number: { type: Type.INTEGER },
+                        image_prompt: { type: Type.STRING },
+                        prompt_variations: {
+                          type: Type.ARRAY,
+                          items: { type: Type.STRING }
+                        },
+                        script: { type: Type.STRING }
+                      },
+                      required: ["shot_number", "image_prompt", "prompt_variations", "script"]
+                    }
+                  }
+                },
+                required: ["story_text", "shots"]
+              }
+            },
+            required: ["format", "platform", "carousel", "reel"]
           }
         }
       });
       const text = response.text;
-      if (!text) return [];
-      return JSON.parse(cleanJson(text));
+      if (!text) return null;
+      
+      const cleaned = cleanJson(text);
+      let parsed;
+      try {
+        parsed = JSON.parse(cleaned);
+      } catch (e) {
+        console.error("Failed to parse AI response as JSON. Raw text:", text);
+        throw e;
+      }
+      
+      return parsed;
     } catch (error) {
       console.error("Error in generateContent:", error);
-      return [];
+      return null;
+    }
+  },
+
+  async generateReelPlan(storyOrPrompt: any) {
+    try {
+      const isPrompt = typeof storyOrPrompt === 'string';
+      const context = isPrompt 
+        ? `Idea: ${storyOrPrompt}`
+        : `Story: ${storyOrPrompt.title}\nSummary: ${storyOrPrompt.summary}`;
+
+      console.log("Generating reel plan for:", isPrompt ? "Custom Prompt" : storyOrPrompt.title);
+      const response = await getAi().models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `Create a 20-second cinematic reel plan.
+        
+        ${context}
+        
+        The reel must have 4 distinct shots, each lasting 5 seconds.
+        For each shot, provide:
+        1. A detailed visual prompt for image generation (cinematic, high-impact).
+        2. A short narration script (1 sentence).
+        
+        Return ONLY a valid JSON object with:
+        {
+          "story_text": "A cohesive 4-sentence story for the whole reel",
+          "shots": [
+            {
+              "shot_number": 1,
+              "image_prompt": "Detailed cinematic prompt...",
+              "script": "Narration for this shot..."
+            },
+            ... (exactly 4 shots)
+          ]
+        }`,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              story_text: { type: Type.STRING },
+              shots: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    shot_number: { type: Type.INTEGER },
+                    image_prompt: { type: Type.STRING },
+                    script: { type: Type.STRING }
+                  },
+                  required: ["shot_number", "image_prompt", "script"]
+                }
+              }
+            },
+            required: ["story_text", "shots"]
+          }
+        }
+      });
+
+      const text = response.text;
+      if (!text) return null;
+      return JSON.parse(cleanJson(text));
+    } catch (error) {
+      console.error("Error in generateReelPlan:", error);
+      return null;
     }
   },
 
@@ -417,6 +559,144 @@ export const geminiService = {
     } catch (error) {
       console.error("Error in generateImage:", error);
       return null;
+    }
+  },
+
+  async generateVideo(prompt: string, imageBase64?: string) {
+    try {
+      console.log("Generating video for prompt:", prompt);
+      const ai = getAi();
+      
+      let operation = await ai.models.generateVideos({
+        model: 'veo-3.1-fast-generate-preview',
+        prompt: prompt,
+        ...(imageBase64 ? {
+          image: {
+            imageBytes: imageBase64.split(',')[1],
+            mimeType: 'image/png'
+          }
+        } : {}),
+        config: {
+          numberOfVideos: 1,
+          resolution: '720p',
+          aspectRatio: '9:16'
+        }
+      });
+
+      // Poll for completion
+      while (!operation.done) {
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        operation = await ai.operations.getVideosOperation({ operation: operation });
+      }
+
+      const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
+      if (!downloadLink) return null;
+
+      // Fetch the video with the API key
+      const apiKey = process.env.GEMINI_API_KEY || (import.meta as any).env?.VITE_GEMINI_API_KEY;
+      const response = await fetch(downloadLink, {
+        method: 'GET',
+        headers: {
+          'x-goog-api-key': apiKey,
+        },
+      });
+
+      const blob = await response.blob();
+      return URL.createObjectURL(blob);
+    } catch (error) {
+      console.error("Error in generateVideo:", error);
+      return null;
+    }
+  },
+
+  async generatePromptVariations(basePrompt: string) {
+    try {
+      console.log("Generating variations for prompt:", basePrompt);
+      const response = await getAi().models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `Generate 3 distinct variations of the following visual prompt for an image generation model. 
+        Each variation should explore a different cinematic style, lighting, or camera angle while keeping the core subject the same.
+        
+        Base Prompt: ${basePrompt}
+        
+        Return ONLY a JSON array of strings.`,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.ARRAY,
+            items: { type: Type.STRING }
+          }
+        }
+      });
+      
+      const text = response.text;
+      if (!text) return [];
+      return JSON.parse(cleanJson(text));
+    } catch (error) {
+      console.error("Error generating prompt variations:", error);
+      return [];
+    }
+  }
+};
+
+export const klingService = {
+  async generateVideo(prompt: string, imageBase64?: string) {
+    const apiKey = process.env.KLING_API_KEY;
+    if (!apiKey) {
+      console.warn("KLING_API_KEY is missing. Falling back to Gemini Video generation.");
+      return geminiService.generateVideo(prompt, imageBase64);
+    }
+
+    try {
+      console.log("Generating video with Kling API...");
+      
+      // Step 1: Submit Task
+      const submitResponse = await axios.post('https://api.klingai.com/v1/videos/text2video', {
+        prompt: prompt,
+        model: "kling-v1",
+        ...(imageBase64 ? { image_url: imageBase64 } : {}),
+        config: {
+          duration: 5,
+          aspect_ratio: "9:16"
+        }
+      }, {
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const taskId = submitResponse.data.data.task_id;
+      console.log("Kling task submitted:", taskId);
+
+      // Step 2: Poll for completion
+      let status = "processing";
+      let videoUrl = null;
+      let attempts = 0;
+      const maxAttempts = 60; // 5 minutes max
+
+      while (status === "processing" && attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        const checkResponse = await axios.get(`https://api.klingai.com/v1/videos/tasks/${taskId}`, {
+          headers: {
+            'Authorization': `Bearer ${apiKey}`
+          }
+        });
+        
+        status = checkResponse.data.data.status;
+        if (status === "succeeded") {
+          videoUrl = checkResponse.data.data.video_url;
+        } else if (status === "failed") {
+          throw new Error("Kling video generation failed");
+        }
+        attempts++;
+      }
+
+      return videoUrl;
+    } catch (error) {
+      console.error("Error in klingService:", error);
+      // Fallback to Gemini if Kling fails or isn't configured
+      return geminiService.generateVideo(prompt, imageBase64);
     }
   }
 };

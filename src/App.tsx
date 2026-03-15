@@ -1,3 +1,4 @@
+// Sunny Signals - App Version 1.0.1
 import * as React from 'react';
 import { useState, useEffect, ErrorInfo, ReactNode, Component } from 'react';
 import { 
@@ -20,10 +21,15 @@ import {
   Zap,
   LogIn,
   LogOut,
-  User as UserIcon
+  User as UserIcon,
+  Video,
+  Play,
+  Clapperboard,
+  Loader2,
+  Layers
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { geminiService } from './services/geminiService';
+import { geminiService, klingService } from './services/geminiService';
 import { Story, Source, Claim, ContentPackage } from './types';
 import { auth, db, storage } from './firebase';
 import { 
@@ -142,6 +148,16 @@ function AppContent() {
   const [showWebhookSettings, setShowWebhookSettings] = useState(false);
   const [estimatedSpend, setEstimatedSpend] = useState<number>(0);
   const [aiStatus, setAiStatus] = useState<'connected' | 'processing' | 'error'>('connected');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [reelPlan, setReelPlan] = useState<any>(null);
+  const [reelImages, setReelImages] = useState<(string | null)[]>([null, null, null, null]);
+  const [reelVideos, setReelVideos] = useState<(string | null)[]>([null, null, null, null]);
+  const [carouselImages, setCarouselImages] = useState<(string | null)[]>([null, null, null]);
+  const [carouselLoadingStates, setCarouselLoadingStates] = useState<boolean[]>([false, false, false]);
+  const [isGeneratingReel, setIsGeneratingReel] = useState(false);
+  const [videoLoadingStates, setVideoLoadingStates] = useState<boolean[]>([false, false, false, false]);
+  const [imageLoadingStates, setImageLoadingStates] = useState<boolean[]>([false, false, false, false]);
+  const [customReelIdea, setCustomReelIdea] = useState<string>('');
 
   // Load/Save Spend from Firestore
   useEffect(() => {
@@ -446,6 +462,7 @@ function AppContent() {
       }
     } catch (error) {
       console.error("Error selecting story:", error);
+      alert("Failed to load story details. Please check your connection.");
     } finally {
       setLoading(false);
     }
@@ -513,51 +530,159 @@ function AppContent() {
 
   const handleGenerateContent = async (platform: 'tiktok' | 'instagram') => {
     if (!selectedStory || !user) return;
-    setLoading(true);
+    setIsGenerating(true);
     setAiStatus('processing');
     try {
+      console.log(`Requesting ${platform} content generation for story ID: ${selectedStory.docId}...`);
+      if (!selectedStory.docId) {
+        console.error("No docId found on selectedStory", selectedStory);
+        alert("Error: Story ID is missing. Please try re-selecting the story from the feed.");
+        setLoading(false);
+        return;
+      }
+
       const options = await geminiService.generateContent(
         selectedStory, 
-        selectedStory.claims, 
+        selectedStory.claims || [], 
         platform, 
         selectedStyle, 
-        steeringInstruction
+        steeringInstruction,
+        customReelIdea
       );
-      await trackUsage(0.002); // Estimated cost for content generation
       
-      if (options && options.length > 0) {
+      console.log(`AI Response options:`, options);
+      
+      if (options) {
+        console.log(`Received content options. Saving to Firestore...`);
         const storyRef = doc(db, 'stories', selectedStory.docId);
         const batch = writeBatch(db);
 
-        for (const pkg of options) {
+        const packagesToSave = Array.isArray(options) ? options : [options];
+
+        for (const pkg of packagesToSave) {
           const pkgRef = doc(collection(storyRef, 'packages'));
+          
+          // Ensure prompt_variations are handled if present
+          const carousel = pkg.carousel ? {
+            ...pkg.carousel,
+            slides: pkg.carousel.slides.map((s: any) => ({
+              ...s,
+              prompt_variations: s.prompt_variations || []
+            }))
+          } : null;
+
+          const reel = pkg.reel ? {
+            ...pkg.reel,
+            shots: pkg.reel.shots.map((s: any) => ({
+              ...s,
+              prompt_variations: s.prompt_variations || []
+            }))
+          } : null;
+
           batch.set(pkgRef, {
             platform,
-            format: pkg.format,
-            hook: pkg.hook,
-            script: pkg.script,
-            visual_description: pkg.visual_description,
-            created_at: serverTimestamp(),
-            performance: {
-              watch_time: 0,
-              completion_rate: 0,
-              shares: 0,
-              saves: 0,
-              comments: 0,
-              reposts: 0,
-              clicks: 0
-            }
+            format: pkg.format || 'unknown',
+            hook: pkg.hook || '',
+            script: pkg.script || '',
+            visual_description: pkg.visual_description || '',
+            carousel,
+            reel,
+            created_at: serverTimestamp()
           });
         }
         await batch.commit();
+        console.log("Batch commit successful.");
+        
+        // Optimistically update local state to provide immediate feedback
+        const newPackages = packagesToSave.map(pkg => ({
+          ...pkg,
+          platform,
+          docId: `temp-${Date.now()}-${Math.random()}`,
+          created_at: new Date()
+        }));
+
+        setSelectedStory((prev: any) => {
+          if (!prev) return prev;
+          const updatedPackages = [...(prev.packages || []), ...newPackages];
+          console.log("Updating local state with new packages:", updatedPackages.length);
+          return {
+            ...prev,
+            packages: updatedPackages
+          };
+        });
+
+        // Re-fetch from server after a short delay to ensure consistency
+        setTimeout(() => {
+          console.log("Performing background re-sync...");
+          handleSelectStory(selectedStory.docId, false);
+        }, 3000);
+      } else {
+        console.warn("No options returned from geminiService.generateContent");
+        alert("The AI was unable to generate content for this story. This can happen if the story content is too short or restricted. Please try again or adjust your steering instructions.");
+      }
+      setAiStatus('connected');
+    } catch (error) {
+      console.error("Content generation failed with error:", error);
+      setAiStatus('error');
+      alert(`Content generation failed: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleUpdatePrompt = async (packageDocId: string, type: 'carousel' | 'reel', index: number, newPrompt: string) => {
+    if (!selectedStory || !user) return;
+    try {
+      const pkgRef = doc(db, 'stories', selectedStory.docId, 'packages', packageDocId);
+      const pkg = selectedStory.packages.find((p: any) => p.docId === packageDocId);
+      if (!pkg) return;
+
+      const updatedPkg = { ...pkg };
+      if (type === 'carousel' && updatedPkg.carousel) {
+        updatedPkg.carousel.slides[index].visual_prompt = newPrompt;
+      } else if (type === 'reel' && updatedPkg.reel) {
+        updatedPkg.reel.shots[index].image_prompt = newPrompt;
+      }
+
+      await updateDoc(pkgRef, {
+        carousel: updatedPkg.carousel || null,
+        reel: updatedPkg.reel || null
+      });
+
+      handleSelectStory(selectedStory.docId, false);
+    } catch (error) {
+      console.error("Failed to update prompt", error);
+    }
+  };
+
+  const handleGeneratePromptVariations = async (packageDocId: string, type: 'carousel' | 'reel', index: number, basePrompt: string) => {
+    if (!selectedStory || !user) return;
+    setAiStatus('processing');
+    try {
+      const variations = await geminiService.generatePromptVariations(basePrompt);
+      if (variations && variations.length > 0) {
+        const pkgRef = doc(db, 'stories', selectedStory.docId, 'packages', packageDocId);
+        const pkg = selectedStory.packages.find((p: any) => p.docId === packageDocId);
+        if (!pkg) return;
+
+        const updatedPkg = { ...pkg };
+        if (type === 'carousel' && updatedPkg.carousel) {
+          updatedPkg.carousel.slides[index].prompt_variations = variations;
+        } else if (type === 'reel' && updatedPkg.reel) {
+          updatedPkg.reel.shots[index].prompt_variations = variations;
+        }
+
+        await updateDoc(pkgRef, {
+          carousel: updatedPkg.carousel || null,
+          reel: updatedPkg.reel || null
+        });
+
         handleSelectStory(selectedStory.docId, false);
       }
       setAiStatus('connected');
     } catch (error) {
-      console.error("Content generation failed", error);
+      console.error("Failed to generate variations", error);
       setAiStatus('error');
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -571,31 +696,6 @@ function AppContent() {
       console.error("Failed to publish story", error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleUpdatePerformance = async (packageId: string, metric: string, value: number) => {
-    if (!selectedStory) return;
-    
-    const updatedPackages = selectedStory.packages?.map((pkg: ContentPackage) => {
-      if (pkg.id === packageId) {
-        return {
-          ...pkg,
-          performance: {
-            ...pkg.performance,
-            [metric]: value
-          }
-        };
-      }
-      return pkg;
-    });
-
-    try {
-      const storyRef = doc(db, 'stories', selectedStory.docId);
-      await updateDoc(storyRef, { packages: updatedPackages });
-      setSelectedStory({ ...selectedStory, packages: updatedPackages });
-    } catch (error) {
-      console.error("Error updating performance:", error);
     }
   };
 
@@ -646,6 +746,95 @@ function AppContent() {
     }
   };
 
+  const handleGenerateReelPlan = async () => {
+    if (!selectedStory && !customReelIdea) return;
+    setIsGeneratingReel(true);
+    try {
+      const plan = await geminiService.generateReelPlan(customReelIdea || selectedStory);
+      setReelPlan(plan);
+      setReelImages([null, null, null, null]);
+      setReelVideos([null, null, null, null]);
+    } catch (error) {
+      console.error("Failed to generate reel plan", error);
+    } finally {
+      setIsGeneratingReel(false);
+    }
+  };
+
+  const handleGenerateCarouselImage = async (idx: number, prompt: string) => {
+    if (!user) return;
+    setCarouselLoadingStates(prev => {
+      const next = [...prev];
+      next[idx] = true;
+      return next;
+    });
+    try {
+      const imageUrl = await geminiService.generateImage(prompt, idx);
+      setCarouselImages(prev => {
+        const next = [...prev];
+        next[idx] = imageUrl;
+        return next;
+      });
+    } catch (error) {
+      console.error("Failed to generate carousel image", error);
+      alert("Failed to generate image. Please try again.");
+    } finally {
+      setCarouselLoadingStates(prev => {
+        const next = [...prev];
+        next[idx] = false;
+        return next;
+      });
+    }
+  };
+
+  const handleGenerateReelImage = async (shotIndex: number) => {
+    if (!reelPlan) return;
+    const newImageLoadingStates = [...imageLoadingStates];
+    newImageLoadingStates[shotIndex] = true;
+    setImageLoadingStates(newImageLoadingStates);
+    
+    try {
+      const prompt = reelPlan.shots[shotIndex].image_prompt;
+      const img = await geminiService.generateImage(prompt, shotIndex);
+      const newReelImages = [...reelImages];
+      newReelImages[shotIndex] = img;
+      setReelImages(newReelImages);
+    } catch (error) {
+      console.error("Failed to generate reel image", error);
+    } finally {
+      setImageLoadingStates(prev => {
+        const next = [...prev];
+        next[shotIndex] = false;
+        return next;
+      });
+    }
+  };
+
+  const handleGenerateReelVideo = async (shotIndex: number) => {
+    if (!reelPlan) return;
+    const newVideoLoadingStates = [...videoLoadingStates];
+    newVideoLoadingStates[shotIndex] = true;
+    setVideoLoadingStates(newVideoLoadingStates);
+
+    try {
+      const prompt = reelPlan.shots[shotIndex].image_prompt;
+      const imageBase64 = reelImages[shotIndex];
+      // Use klingService for video generation
+      const videoUrl = await klingService.generateVideo(prompt, imageBase64 || undefined);
+      const newReelVideos = [...reelVideos];
+      newReelVideos[shotIndex] = videoUrl;
+      setReelVideos(newReelVideos);
+    } catch (error) {
+      console.error("Failed to generate reel video", error);
+    } finally {
+      setVideoLoadingStates(prev => {
+        const next = [...prev];
+        next[shotIndex] = false;
+        return next;
+      });
+    }
+  };
+
   const handleSaveImageToPackage = async (imageUrl: string, packageDocId: string) => {
     if (!selectedStory || !user) return;
     setLoading(true);
@@ -677,6 +866,93 @@ function AppContent() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const PromptEditor = ({ 
+    packageDocId, 
+    type, 
+    index, 
+    currentPrompt, 
+    variations = [] 
+  }: { 
+    packageDocId: string, 
+    type: 'carousel' | 'reel', 
+    index: number, 
+    currentPrompt: string, 
+    variations?: string[] 
+  }) => {
+    const [isEditing, setIsEditing] = useState(false);
+    const [editedPrompt, setEditedPrompt] = useState(currentPrompt);
+    const [showVariations, setShowVariations] = useState(false);
+
+    return (
+      <div className="space-y-3 pt-4 border-t border-[#141414]/5">
+        <div className="flex items-center justify-between">
+          <p className="text-[10px] font-bold uppercase tracking-widest opacity-40">Visual Prompt</p>
+          <div className="flex space-x-2">
+            <button 
+              onClick={() => setIsEditing(!isEditing)}
+              className="text-[10px] font-bold uppercase tracking-widest text-indigo-600 hover:underline"
+            >
+              {isEditing ? 'Cancel' : 'Edit'}
+            </button>
+            <button 
+              onClick={() => handleGeneratePromptVariations(packageDocId, type, index, currentPrompt)}
+              className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 hover:underline"
+            >
+              Get Variations
+            </button>
+          </div>
+        </div>
+
+        {isEditing ? (
+          <div className="space-y-2">
+            <textarea 
+              value={editedPrompt}
+              onChange={(e) => setEditedPrompt(e.target.value)}
+              className="w-full p-3 bg-white rounded-xl border border-[#141414]/10 text-[10px] outline-none focus:border-[#141414]/40 min-h-[80px]"
+            />
+            <button 
+              onClick={() => {
+                handleUpdatePrompt(packageDocId, type, index, editedPrompt);
+                setIsEditing(false);
+              }}
+              className="w-full py-2 bg-[#141414] text-white rounded-xl text-[10px] font-bold uppercase tracking-widest"
+            >
+              Save Prompt
+            </button>
+          </div>
+        ) : (
+          <p className="text-[10px] text-[#141414]/60 italic line-clamp-3">{currentPrompt}</p>
+        )}
+
+        {variations.length > 0 && (
+          <div className="space-y-2">
+            <button 
+              onClick={() => setShowVariations(!showVariations)}
+              className="flex items-center text-[8px] font-bold uppercase tracking-widest opacity-60 hover:opacity-100"
+            >
+              <RefreshCw size={8} className={`mr-1 ${showVariations ? 'rotate-180' : ''} transition-transform`} />
+              {showVariations ? 'Hide Variations' : `Show ${variations.length} Variations`}
+            </button>
+            
+            {showVariations && (
+              <div className="space-y-2 pl-2 border-l-2 border-[#141414]/5">
+                {variations.map((v, i) => (
+                  <button 
+                    key={i}
+                    onClick={() => handleUpdatePrompt(packageDocId, type, index, v)}
+                    className="block w-full text-left p-2 bg-white rounded-lg border border-[#141414]/5 text-[8px] italic text-[#141414]/60 hover:border-indigo-500 transition-colors"
+                  >
+                    {v}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
   };
 
   if (!isAuthReady) {
@@ -740,6 +1016,9 @@ function AppContent() {
             {activeTab === 'export' && "Export Center"}
           </h1>
           <div className="flex items-center space-x-6">
+            <div className="block">
+              <span className="text-[8px] font-bold uppercase tracking-[0.2em] text-rose-600 bg-rose-50 px-2 py-1 rounded border border-rose-100">v0.0.4-PROD</span>
+            </div>
             {/* AI Status & Spend */}
             <div className="hidden md:flex items-center space-x-4 px-4 py-2 bg-[#141414]/5 rounded-full border border-[#141414]/5">
               <div className="flex items-center space-x-2 border-r border-[#141414]/10 pr-4">
@@ -950,6 +1229,11 @@ function AppContent() {
                         <span className="px-2 py-1 bg-[#141414] text-white text-[10px] uppercase font-bold rounded tracking-widest">
                           {selectedStory.category}
                         </span>
+                        {selectedStory.status === 'verified' && (
+                          <span className="px-2 py-1 bg-emerald-500 text-white text-[10px] uppercase font-bold rounded tracking-widest flex items-center shadow-[0_0_15px_rgba(16,185,129,0.4)]">
+                            <ShieldCheck size={12} className="mr-1" /> Verified Story
+                          </span>
+                        )}
                         <span className="text-xs opacity-50 flex items-center">
                           <Globe size={12} className="mr-1" /> {selectedStory.region}
                         </span>
@@ -973,14 +1257,19 @@ function AppContent() {
                       <span>{loading ? 'Verifying...' : 'Run Verification Agent'}</span>
                     </button>
                     <button 
-                      onClick={() => handleSave(selectedStory.id, !!selectedStory.is_saved)}
+                      onClick={() => handleSave(selectedStory.docId, !!selectedStory.is_saved)}
                       className={`flex items-center space-x-2 px-6 py-3 rounded-full border transition-all ${selectedStory.is_saved ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-white border-[#141414] text-[#141414] hover:bg-[#F5F5F0]'}`}
                     >
                       <Bookmark size={20} className={selectedStory.is_saved ? 'fill-current' : ''} />
                       <span>{selectedStory.is_saved ? 'Saved to Library' : 'Save to Library'}</span>
                     </button>
                     <button 
-                      onClick={() => setActiveTab('studio')}
+                      onClick={() => {
+                        if (!selectedStory.is_saved) {
+                          handleSave(selectedStory.docId, false);
+                        }
+                        setActiveTab('studio');
+                      }}
                       className="flex items-center space-x-2 px-6 py-3 bg-white border border-[#141414] text-[#141414] rounded-full hover:bg-[#F5F5F0] transition-all"
                     >
                       <Plus size={20} />
@@ -1168,7 +1457,17 @@ function AppContent() {
                 exit={{ opacity: 0, scale: 1.05 }}
                 className="space-y-8"
               >
-                <div className="bg-white p-8 rounded-3xl border border-[#141414]/5 shadow-sm space-y-6">
+                <div className="bg-white p-8 rounded-3xl border border-[#141414]/5 shadow-sm space-y-8">
+                  <div className="pb-6 border-b border-[#141414]/5">
+                    <div className="flex items-center space-x-2 mb-2">
+                      <span className="px-2 py-0.5 rounded bg-[#141414] text-white text-[10px] font-bold uppercase tracking-widest">
+                        {selectedStory.category}
+                      </span>
+                      <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">Content Studio</span>
+                    </div>
+                    <h2 className="text-2xl font-medium leading-tight">{selectedStory.title}</h2>
+                  </div>
+
                   <div className="space-y-4">
                     <h3 className="text-sm font-bold uppercase tracking-widest opacity-40">1. Select Tone & Style</h3>
                     <div className="flex flex-wrap gap-2">
@@ -1191,7 +1490,7 @@ function AppContent() {
                         type="text"
                         value={steeringInstruction}
                         onChange={(e) => setSteeringInstruction(e.target.value)}
-                        placeholder="e.g. 'Make it shorter', 'Focus more on the animal rescue', 'Use more emojis'..."
+                        placeholder="e.g. 'Make it shorter', 'Focus more on the animal rescue'..."
                         className="w-full p-4 bg-[#F5F5F0] rounded-2xl border border-[#141414]/10 text-sm outline-none focus:border-[#141414]/40 transition-all"
                       />
                       {steeringInstruction && (
@@ -1206,13 +1505,42 @@ function AppContent() {
                   </div>
 
                   <div className="space-y-4">
-                    <h3 className="text-sm font-bold uppercase tracking-widest opacity-40">3. Select Platform</h3>
+                    <h3 className="text-sm font-bold uppercase tracking-widest opacity-40">3. Creative Override (Optional)</h3>
+                    <div className="relative">
+                      <input 
+                        type="text"
+                        value={customReelIdea}
+                        onChange={(e) => setCustomReelIdea(e.target.value)}
+                        placeholder="e.g. 'Imagine this story happening in a cyberpunk city'..."
+                        className="w-full p-4 bg-[#F5F5F0] rounded-2xl border border-[#141414]/10 text-sm outline-none focus:border-[#141414]/40 transition-all"
+                      />
+                      {customReelIdea && (
+                        <button 
+                          onClick={() => setCustomReelIdea('')}
+                          className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-bold uppercase tracking-widest opacity-40 hover:opacity-100"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-bold uppercase tracking-widest opacity-40">4. Select Platform</h3>
+                      <button 
+                        onClick={() => handleSelectStory(selectedStory.docId, false)}
+                        className="text-[10px] font-bold uppercase tracking-widest opacity-40 hover:opacity-100 flex items-center"
+                      >
+                        <RefreshCw size={10} className={`mr-1 ${loading ? 'animate-spin' : ''}`} /> Refresh Studio
+                      </button>
+                    </div>
                     <div className="flex space-x-4">
                       {['Instagram', 'TikTok'].map(platform => (
                         <div key={platform} className="flex flex-col space-y-2">
                           <button
                             onClick={() => handleGenerateContent(platform.toLowerCase() as any)}
-                            disabled={loading}
+                            disabled={loading || isGenerating}
                             className="px-6 py-3 rounded-full border border-[#141414]/10 bg-[#141414] text-white hover:opacity-90 transition-all text-sm font-bold uppercase tracking-widest disabled:opacity-50"
                           >
                             Generate {platform} Pack
@@ -1232,9 +1560,15 @@ function AppContent() {
                 </div>
 
                 <div className="grid grid-cols-1 gap-12">
-                  {selectedStory.packages?.map((pkg: any, i: number) => (
-                    <div key={i} className="bg-white rounded-3xl p-8 border border-[#141414]/5 shadow-sm grid grid-cols-1 lg:grid-cols-3 gap-8">
-                      <div className="lg:col-span-2 space-y-6">
+                  {isGenerating && (
+                    <div className="col-span-full py-20 text-center space-y-4">
+                      <RefreshCw size={32} className="mx-auto animate-spin text-[#141414]/20" />
+                      <p className="text-sm italic opacity-40">AI is crafting your {selectedStory.title} social pack...</p>
+                    </div>
+                  )}
+                  {!isGenerating && selectedStory.packages?.map((pkg: any, i: number) => (
+                    <div key={i} className="bg-white rounded-3xl p-8 border border-[#141414]/5 shadow-sm space-y-8">
+                      <div className="space-y-6">
                         <div className="flex justify-between items-center">
                           <div className="flex items-center space-x-3">
                             <span className="px-3 py-1 bg-[#141414] text-white rounded-full text-[10px] font-bold uppercase tracking-widest">
@@ -1247,7 +1581,16 @@ function AppContent() {
                           <div className="flex space-x-2">
                             <button 
                               onClick={() => {
-                                navigator.clipboard.writeText(`Hook: ${pkg.hook}\n\nScript: ${pkg.script}`);
+                                let text = '';
+                                if (pkg.format === 'instagram_pack') {
+                                  text += `CAROUSEL:\n`;
+                                  pkg.carousel?.slides.forEach((s: any) => text += `Slide ${s.slide_number}: ${s.text}\n`);
+                                  text += `\nREEL:\nNarrative: ${pkg.reel?.story_text}\n`;
+                                  pkg.reel?.shots.forEach((s: any) => text += `Shot ${s.shot_number}: ${s.script}\n`);
+                                } else {
+                                  text = `Hook: ${pkg.hook}\n\nScript: ${pkg.script}`;
+                                }
+                                navigator.clipboard.writeText(text);
                                 alert('Content copied to clipboard!');
                               }}
                               className="p-2 text-[#141414]/40 hover:text-[#141414] hover:bg-[#F5F5F0] rounded-lg transition-all"
@@ -1257,61 +1600,114 @@ function AppContent() {
                             </button>
                           </div>
                         </div>
-                        <div className="space-y-4">
-                          <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-2xl">
-                            <h4 className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 mb-2">Hook</h4>
-                            <p className="text-sm font-serif italic text-emerald-900 leading-relaxed">"{pkg.hook}"</p>
-                          </div>
 
-                          <div className="space-y-2">
-                            <h4 className="text-[10px] font-bold uppercase tracking-widest opacity-40">Narration Script</h4>
-                            <div className="whitespace-pre-wrap text-sm leading-relaxed text-[#141414]/80 font-serif italic bg-[#F5F5F0] p-6 rounded-2xl border border-[#141414]/5">
-                              {pkg.script}
+                        {pkg.format === 'instagram_pack' ? (
+                          <div className="space-y-12">
+                            {/* Carousel Section */}
+                            <div className="space-y-6">
+                              <div className="flex items-center justify-between">
+                                <h3 className="text-lg font-serif italic">Image Carousel (3 Slides)</h3>
+                                <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">Educational Series</span>
+                              </div>
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                {pkg.carousel?.slides.map((slide: any, idx: number) => (
+                                  <div key={idx} className="p-6 bg-[#F5F5F0] rounded-2xl border border-[#141414]/5 space-y-4">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">Slide {slide.slide_number}</span>
+                                    </div>
+                                    <p className="text-sm font-serif italic leading-relaxed text-[#141414]/80">
+                                      {slide.text}
+                                    </p>
+                                    <PromptEditor 
+                                      packageDocId={pkg.docId}
+                                      type="carousel"
+                                      index={idx}
+                                      currentPrompt={slide.visual_prompt}
+                                      variations={slide.prompt_variations}
+                                    />
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* Reel Section */}
+                            <div className="space-y-6">
+                              <div className="flex items-center justify-between">
+                                <h3 className="text-lg font-serif italic">20s Cinematic Reel (4 Shots)</h3>
+                                <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">Dramatic Narrative</span>
+                              </div>
+                              <div className="p-6 bg-[#141414] text-white rounded-2xl space-y-2">
+                                <h4 className="text-[10px] font-bold uppercase tracking-widest opacity-40">Full Narrative</h4>
+                                <p className="text-sm font-serif italic opacity-90">{pkg.reel?.story_text}</p>
+                              </div>
+                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                                {pkg.reel?.shots.map((shot: any, idx: number) => (
+                                  <div key={idx} className="space-y-4">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">Shot {shot.shot_number} (5s)</span>
+                                    </div>
+                                    <div className="p-4 bg-[#F5F5F0] rounded-2xl border border-[#141414]/5 space-y-3">
+                                      <p className="text-[10px] font-bold leading-tight text-[#141414]/80">{shot.script}</p>
+                                      <PromptEditor 
+                                        packageDocId={pkg.docId}
+                                        type="reel"
+                                        index={idx}
+                                        currentPrompt={shot.image_prompt}
+                                        variations={shot.prompt_variations}
+                                      />
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                            
+                            <div className="pt-6 border-t border-[#141414]/5 flex justify-center">
+                              <button 
+                                onClick={() => {
+                                  setReelPlan(pkg.reel);
+                                  setActiveTab('visual');
+                                }}
+                                className="px-12 py-4 bg-[#141414] text-white rounded-2xl font-bold uppercase tracking-widest text-xs hover:opacity-90 transition-all flex items-center"
+                              >
+                                <Zap size={16} className="mr-2" />
+                                Produce Reel in Visual Studio
+                              </button>
                             </div>
                           </div>
-
-                          <div className="space-y-2">
-                            <h4 className="text-[10px] font-bold uppercase tracking-widest opacity-40">Visual Direction</h4>
-                            <p className="text-xs text-[#141414]/60 italic">
-                              {pkg.visual_description}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="space-y-6 border-l border-[#141414]/5 pl-8">
-                        <h3 className="text-sm font-bold uppercase tracking-widest opacity-40">Performance Feedback</h3>
-                        <div className="space-y-4">
-                          {[
-                            { label: 'Watch Time (s)', key: 'watch_time' },
-                            { label: 'Completion %', key: 'completion_rate' },
-                            { label: 'Shares', key: 'shares' },
-                            { label: 'Saves', key: 'saves' },
-                            { label: 'Comments', key: 'comments' },
-                            { label: 'Reposts', key: 'reposts' },
-                          ].map((metric) => (
-                            <div key={metric.key} className="space-y-1">
-                              <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">{metric.label}</label>
-                              <input 
-                                type="number"
-                                value={pkg.performance?.[metric.key] || 0}
-                                onChange={(e) => handleUpdatePerformance(pkg.id, metric.key, parseFloat(e.target.value))}
-                                className="w-full p-2 bg-[#F5F5F0] rounded-lg border border-[#141414]/10 text-xs outline-none focus:border-[#141414]/40 transition-all"
-                              />
+                        ) : (
+                          <div className="space-y-4">
+                            <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-2xl">
+                              <h4 className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 mb-2">Hook</h4>
+                              <p className="text-sm font-serif italic text-emerald-900 leading-relaxed">"{pkg.hook}"</p>
                             </div>
-                          ))}
-                        </div>
-                        <div className="pt-4 border-t border-[#141414]/5">
-                          <button 
-                            onClick={() => {
-                              setActiveVisualPrompt(pkg.visual_description);
-                              setActiveTab('visual');
-                            }}
-                            className="w-full py-3 bg-[#141414] text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:opacity-90 transition-all flex items-center justify-center"
-                          >
-                            <ImageIcon size={14} className="mr-2" /> Generate Visuals
-                          </button>
-                        </div>
+
+                            <div className="space-y-2">
+                              <h4 className="text-[10px] font-bold uppercase tracking-widest opacity-40">Narration Script</h4>
+                              <div className="whitespace-pre-wrap text-sm leading-relaxed text-[#141414]/80 font-serif italic bg-[#F5F5F0] p-6 rounded-2xl border border-[#141414]/5">
+                                {pkg.script}
+                              </div>
+                            </div>
+
+                            <div className="space-y-2">
+                              <h4 className="text-[10px] font-bold uppercase tracking-widest opacity-40">Visual Direction</h4>
+                              <p className="text-xs text-[#141414]/60 italic">
+                                {pkg.visual_description}
+                              </p>
+                            </div>
+
+                            <div className="pt-6 border-t border-[#141414]/5">
+                              <button 
+                                onClick={() => {
+                                  setActiveVisualPrompt(pkg.visual_description);
+                                  setActiveTab('visual');
+                                }}
+                                className="px-6 py-3 bg-[#141414] text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:opacity-90 transition-all flex items-center justify-center w-fit"
+                              >
+                                <ImageIcon size={14} className="mr-2" /> Generate Visual Identity
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -1341,7 +1737,27 @@ function AppContent() {
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                   <div className="bg-white p-8 rounded-3xl border border-[#141414]/5 shadow-sm space-y-6">
-                    <h3 className="text-sm font-bold uppercase tracking-widest opacity-40">Active Visual Prompt</h3>
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-bold uppercase tracking-widest opacity-40">Active Visual Prompt</h3>
+                      <div className="flex space-x-2">
+                        <select 
+                          onChange={(e) => setActiveVisualPrompt(e.target.value)}
+                          className="text-[10px] font-bold uppercase tracking-widest bg-[#F5F5F0] border border-[#141414]/5 rounded-lg px-2 py-1 outline-none"
+                        >
+                          <option value="">Select from Story</option>
+                          {selectedStory.packages?.map((pkg: any) => (
+                            <optgroup key={pkg.docId} label={`${pkg.platform} ${pkg.format}`}>
+                              {pkg.carousel?.slides.map((s: any) => (
+                                <option key={`c-${s.slide_number}`} value={s.visual_prompt}>Carousel Slide {s.slide_number}</option>
+                              ))}
+                              {pkg.reel?.shots.map((s: any) => (
+                                <option key={`r-${s.shot_number}`} value={s.image_prompt}>Reel Shot {s.shot_number}</option>
+                              ))}
+                            </optgroup>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
                     <div className="p-4 bg-[#F5F5F0] rounded-2xl border border-[#141414]/5">
                       <p className="text-sm italic text-[#141414]/70 leading-relaxed">
                         {activeVisualPrompt || (selectedStory.packages?.[0]?.visual_prompt) || "No prompt selected. Generate content in Studio first."}
@@ -1458,6 +1874,223 @@ function AppContent() {
                   </div>
                 </div>
 
+                {/* Carousel Production Studio */}
+                {selectedStory.packages?.find((p: any) => p.format === 'instagram_pack') && (
+                  <div className="bg-white p-12 rounded-[3rem] border border-[#141414]/5 shadow-sm space-y-12">
+                    <div className="space-y-2">
+                      <div className="flex items-center space-x-3">
+                        <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
+                          <Layers size={20} />
+                        </div>
+                        <h3 className="text-2xl font-serif italic">Carousel Production Studio</h3>
+                      </div>
+                      <p className="text-sm text-[#141414]/60">Generate high-quality visuals for your 3-slide Instagram carousel.</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                      {selectedStory.packages?.find((p: any) => p.format === 'instagram_pack')?.carousel?.slides.map((slide: any, idx: number) => (
+                        <div key={idx} className="space-y-4">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">Slide {slide.slide_number}</span>
+                          </div>
+                          
+                          <div className="aspect-square bg-[#F5F5F0] rounded-3xl overflow-hidden border border-[#141414]/5 relative group">
+                            {carouselImages[idx] ? (
+                              <img 
+                                src={carouselImages[idx]!} 
+                                alt={`Slide ${idx + 1}`} 
+                                className="w-full h-full object-cover"
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center space-y-4">
+                                <div className="w-12 h-12 rounded-full bg-white/50 flex items-center justify-center">
+                                  {carouselLoadingStates[idx] ? <Loader2 size={24} className="animate-spin opacity-20" /> : <ImageIcon size={24} className="opacity-20" />}
+                                </div>
+                                <p className="text-[8px] font-bold uppercase tracking-widest opacity-40">Waiting for visual</p>
+                              </div>
+                            )}
+
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center space-y-3 p-4">
+                              <button 
+                                onClick={() => handleGenerateCarouselImage(idx, slide.visual_prompt)}
+                                disabled={carouselLoadingStates[idx]}
+                                className="w-full py-3 bg-white text-[#141414] rounded-xl text-[10px] font-bold uppercase tracking-widest flex items-center justify-center hover:scale-105 transition-transform"
+                              >
+                                {carouselLoadingStates[idx] ? <Loader2 size={14} className="animate-spin mr-2" /> : <ImageIcon size={14} className="mr-2" />}
+                                {carouselImages[idx] ? 'Regenerate' : 'Gen Image'}
+                              </button>
+                              {carouselImages[idx] && (
+                                <button 
+                                  onClick={() => {
+                                    const link = document.createElement('a');
+                                    link.href = carouselImages[idx]!;
+                                    link.download = `carousel-slide-${idx+1}.png`;
+                                    link.click();
+                                  }}
+                                  className="w-full py-3 bg-emerald-600 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest flex items-center justify-center hover:scale-105 transition-transform"
+                                >
+                                  <Download size={14} className="mr-2" />
+                                  Download
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="space-y-2">
+                            <p className="text-[10px] font-bold leading-tight text-[#141414]/80 line-clamp-2">
+                              {slide.text}
+                            </p>
+                            <p className="text-[8px] text-[#141414]/40 italic line-clamp-2">
+                              {slide.visual_prompt}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Reel Production Studio */}
+                <div className="bg-white p-12 rounded-[3rem] border border-[#141414]/5 shadow-sm space-y-12">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                    <div className="space-y-2">
+                      <div className="flex items-center space-x-3">
+                        <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg">
+                          <Clapperboard size={20} />
+                        </div>
+                        <h3 className="text-2xl font-serif italic">Reel Production Studio</h3>
+                      </div>
+                      <p className="text-sm text-[#141414]/60">Break down your story into a 20-second cinematic reel (4 shots x 5s). Powered by Cinematic Video Engine.</p>
+                    </div>
+                    <div className="flex flex-col md:flex-row items-center gap-4">
+                      <input 
+                        type="text"
+                        placeholder="Optional: Custom Idea Override"
+                        value={customReelIdea}
+                        onChange={(e) => setCustomReelIdea(e.target.value)}
+                        className="px-4 py-3 bg-[#F5F5F0] rounded-xl border border-[#141414]/10 text-[10px] outline-none focus:border-[#141414]/40 transition-all w-full md:w-64"
+                      />
+                      <button 
+                        onClick={handleGenerateReelPlan}
+                        disabled={isGeneratingReel || (!selectedStory && !customReelIdea)}
+                        className="px-8 py-4 bg-[#141414] text-white rounded-2xl font-bold uppercase tracking-widest text-xs hover:opacity-90 transition-all flex items-center justify-center disabled:opacity-50 whitespace-nowrap"
+                      >
+                        {isGeneratingReel ? (
+                          <>
+                            <Loader2 size={16} className="mr-2 animate-spin" />
+                            Planning Reel...
+                          </>
+                        ) : (
+                          <>
+                            <Zap size={16} className="mr-2" />
+                            Generate Reel Plan
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  {reelPlan && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="space-y-12"
+                    >
+                      <div className="p-8 bg-[#F5F5F0] rounded-[2rem] border border-[#141414]/5">
+                        <h4 className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-4">Reel Narrative</h4>
+                        <p className="text-xl font-serif italic leading-relaxed text-[#141414]/80">
+                          {reelPlan.story_text}
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        {reelPlan.shots.map((shot: any, idx: number) => (
+                          <div key={idx} className="space-y-4">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">Shot {shot.shot_number} (5s)</span>
+                            </div>
+                            
+                            <div className="aspect-[9/16] bg-[#F5F5F0] rounded-3xl overflow-hidden border border-[#141414]/5 relative group">
+                              {reelVideos[idx] ? (
+                                <video 
+                                  src={reelVideos[idx]!} 
+                                  className="w-full h-full object-cover"
+                                  controls
+                                  autoPlay
+                                  loop
+                                  muted
+                                />
+                              ) : reelImages[idx] ? (
+                                <img 
+                                  src={reelImages[idx]!} 
+                                  alt={`Shot ${idx + 1}`} 
+                                  className="w-full h-full object-cover"
+                                  referrerPolicy="no-referrer"
+                                />
+                              ) : (
+                                <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center space-y-4">
+                                  <div className="w-12 h-12 rounded-full bg-white/50 flex items-center justify-center">
+                                    {imageLoadingStates[idx] ? <Loader2 size={24} className="animate-spin opacity-20" /> : <ImageIcon size={24} className="opacity-20" />}
+                                  </div>
+                                  <p className="text-[8px] font-bold uppercase tracking-widest opacity-40">Waiting for visual</p>
+                                </div>
+                              )}
+
+                              {/* Action Overlays */}
+                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center space-y-3 p-4">
+                                {!reelImages[idx] && (
+                                  <button 
+                                    onClick={() => handleGenerateReelImage(idx)}
+                                    disabled={imageLoadingStates[idx]}
+                                    className="w-full py-3 bg-white text-[#141414] rounded-xl text-[10px] font-bold uppercase tracking-widest flex items-center justify-center hover:scale-105 transition-transform"
+                                  >
+                                    {imageLoadingStates[idx] ? <Loader2 size={14} className="animate-spin mr-2" /> : <ImageIcon size={14} className="mr-2" />}
+                                    Gen Image
+                                  </button>
+                                )}
+                                {reelImages[idx] && !reelVideos[idx] && (
+                                  <button 
+                                    onClick={() => handleGenerateReelVideo(idx)}
+                                    disabled={videoLoadingStates[idx]}
+                                    className="w-full py-3 bg-indigo-600 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest flex items-center justify-center hover:scale-105 transition-transform"
+                                  >
+                                    {videoLoadingStates[idx] ? <Loader2 size={14} className="animate-spin mr-2" /> : <Video size={14} className="mr-2" />}
+                                    Gen Video
+                                  </button>
+                                )}
+                                {reelVideos[idx] && (
+                                  <button 
+                                    onClick={() => {
+                                      const link = document.createElement('a');
+                                      link.href = reelVideos[idx]!;
+                                      link.download = `reel-shot-${idx+1}.mp4`;
+                                      link.click();
+                                    }}
+                                    className="w-full py-3 bg-emerald-600 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest flex items-center justify-center hover:scale-105 transition-transform"
+                                  >
+                                    <Download size={14} className="mr-2" />
+                                    Download MP4
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="space-y-2">
+                              <p className="text-[10px] font-bold leading-tight text-[#141414]/80">
+                                {shot.script}
+                              </p>
+                              <p className="text-[8px] text-[#141414]/40 italic line-clamp-2">
+                                {shot.image_prompt}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
+                </div>
+
                 <div className="bg-[#141414] text-white p-12 rounded-[3rem] text-center space-y-6">
                   <ShieldCheck size={48} className="mx-auto opacity-20" />
                   <h3 className="text-2xl font-serif italic">Authenticity First</h3>
@@ -1552,6 +2185,14 @@ function AppContent() {
                     <button className="w-full py-4 border border-[#141414]/10 rounded-2xl font-bold uppercase tracking-widest text-xs hover:bg-[#F5F5F0] transition-all">
                       Download Full Asset Bundle (JSON + Text)
                     </button>
+                    <a 
+                      href="/api/export-project" 
+                      download 
+                      className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-bold uppercase tracking-widest text-xs hover:bg-emerald-700 transition-all flex items-center justify-center"
+                    >
+                      <Download size={16} className="mr-2" />
+                      Download Full Project ZIP (GitHub Alternative)
+                    </a>
                     <button 
                       onClick={handlePublish}
                       disabled={selectedStory.status === 'published'}
@@ -1642,9 +2283,16 @@ function StoryCard({ story, onClick, onSave, onDelete, active }: any) {
 
       <div className="flex justify-between items-start mb-4 pr-8">
         <div className="flex flex-col space-y-1">
-          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest border w-fit ${color.bg} ${color.text} ${color.border}`}>
-            {story.category}
-          </span>
+          <div className="flex items-center space-x-2">
+            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest border w-fit ${color.bg} ${color.text} ${color.border}`}>
+              {story.category}
+            </span>
+            {story.status === 'verified' && (
+              <span className="px-2 py-0.5 rounded bg-emerald-500 text-white text-[10px] font-bold uppercase tracking-widest flex items-center shadow-[0_0_10px_rgba(16,185,129,0.3)]">
+                <ShieldCheck size={10} className="mr-1" /> Verified
+              </span>
+            )}
+          </div>
           {story.trend_signal && (
             <span className="text-[8px] font-bold uppercase tracking-widest text-indigo-600 flex items-center">
               <Zap size={8} className="mr-1 fill-current" /> {story.trend_signal}

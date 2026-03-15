@@ -48,19 +48,32 @@ export interface Claim {
 
 export interface ContentPackage {
   id?: string;
+  docId?: string;
   story_id: string;
-  format: '15s_hook' | '45s_reel' | '90s_explainer';
+  format: '15s_hook' | '45s_reel' | '90s_explainer' | 'instagram_pack';
   platform: 'tiktok' | 'instagram';
   hook?: string;
-  script: string;
-  visual_description: string;
-  performance?: {
-    watch_time: number;
-    completion_rate: number;
-    shares: number;
-    saves: number;
-    comments: number;
-    reposts: number;
-    clicks: number;
+  script?: string;
+  visual_description?: string;
+  carousel?: {
+    slides: {
+      slide_number: number;
+      text: string;
+      visual_prompt: string;
+      prompt_variations?: string[];
+      image_url?: string;
+    }[];
+  };
+  reel?: {
+    story_text: string;
+    shots: {
+      shot_number: number;
+      image_prompt: string;
+      prompt_variations?: string[];
+      script: string;
+      image_url?: string;
+      video_url?: string;
+      video_status?: 'idle' | 'generating' | 'completed' | 'failed';
+    }[];
   };
 }

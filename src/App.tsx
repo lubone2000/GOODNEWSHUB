@@ -27,7 +27,10 @@ import {
   Clapperboard,
   Loader2,
   Layers,
-  Palette
+  Maximize2,
+  Palette,
+  X,
+  Check
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { geminiService, klingService } from './services/geminiService';
@@ -159,6 +162,10 @@ function AppContent() {
   const [videoLoadingStates, setVideoLoadingStates] = useState<boolean[]>([false, false, false, false]);
   const [imageLoadingStates, setImageLoadingStates] = useState<boolean[]>([false, false, false, false]);
   const [customReelIdea, setCustomReelIdea] = useState<string>('');
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [reelPromptOverrides, setReelPromptOverrides] = useState<string[]>(['', '', '', '']);
+  const [reelVariationIndices, setReelVariationIndices] = useState<number[]>([0, 0, 0, 0]);
+  const [activeReferenceImage, setActiveReferenceImage] = useState<string | null>(null);
   const [brandSettings, setBrandSettings] = useState<any>({
     primaryColor: '#141414',
     secondaryColor: '#F5F5F0',
@@ -448,6 +455,7 @@ function AppContent() {
   const handleSelectStory = async (id: string, shouldSwitchTab: boolean = true) => {
     setSelectedStoryId(id);
     setLoading(true);
+    setActiveReferenceImage(null); // Clear reference image when switching stories
     try {
       // Find the story in the local list first for quick access to docId
       const localStory = stories.find(s => s.docId === id || s.id === id);
@@ -772,7 +780,7 @@ function AppContent() {
       );
       
       const generationPromise = (async () => {
-        const promises = [0, 1, 2].map(i => geminiService.generateImage(prompt, i, brandSettings));
+        const promises = [0, 1, 2].map(i => geminiService.generateImage(prompt, i, brandSettings, activeReferenceImage || undefined));
         return await Promise.all(promises);
       })();
 
@@ -813,7 +821,7 @@ function AppContent() {
       return next;
     });
     try {
-      const imageUrl = await geminiService.generateImage(prompt, idx);
+      const imageUrl = await geminiService.generateImage(prompt, idx, brandSettings, activeReferenceImage || undefined);
       setCarouselImages(prev => {
         const next = [...prev];
         next[idx] = imageUrl;
@@ -831,18 +839,28 @@ function AppContent() {
     }
   };
 
-  const handleGenerateReelImage = async (shotIndex: number) => {
+  const handleGenerateReelImage = async (shotIndex: number, isVariation: boolean = false) => {
     if (!reelPlan) return;
     const newImageLoadingStates = [...imageLoadingStates];
     newImageLoadingStates[shotIndex] = true;
     setImageLoadingStates(newImageLoadingStates);
     
     try {
-      const prompt = reelPlan.shots[shotIndex].image_prompt;
-      const img = await geminiService.generateImage(prompt, shotIndex);
+      const nextVariation = isVariation ? (reelVariationIndices[shotIndex] + 1) % 3 : reelVariationIndices[shotIndex];
+      const prompt = reelPromptOverrides[shotIndex] || reelPlan.shots[shotIndex].image_prompt;
+      const img = await geminiService.generateImage(prompt, nextVariation, brandSettings, activeReferenceImage || undefined);
+      
       const newReelImages = [...reelImages];
       newReelImages[shotIndex] = img;
       setReelImages(newReelImages);
+
+      if (isVariation) {
+        setReelVariationIndices(prev => {
+          const next = [...prev];
+          next[shotIndex] = nextVariation;
+          return next;
+        });
+      }
     } catch (error) {
       console.error("Failed to generate reel image", error);
     } finally {
@@ -1420,6 +1438,40 @@ function AppContent() {
                             </div>
                           ))}
                         </div>
+
+                        {selectedStory.proof_assets.fact_images && selectedStory.proof_assets.fact_images.length > 0 && (
+                          <div className="space-y-4">
+                            <h3 className="text-sm font-bold uppercase tracking-widest opacity-40">Factual Reference Images</h3>
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                              {selectedStory.proof_assets.fact_images.map((img: any, i: number) => (
+                                <div 
+                                  key={i} 
+                                  className={`relative group cursor-pointer rounded-2xl overflow-hidden border-2 transition-all ${activeReferenceImage === img.url ? 'border-emerald-500 shadow-lg' : 'border-transparent'}`}
+                                  onClick={() => setActiveReferenceImage(activeReferenceImage === img.url ? null : img.url)}
+                                >
+                                  <img 
+                                    src={img.url} 
+                                    alt={img.title} 
+                                    className="w-full aspect-square object-cover"
+                                    referrerPolicy="no-referrer"
+                                  />
+                                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-3">
+                                    <p className="text-[10px] text-white font-bold leading-tight line-clamp-2">{img.title}</p>
+                                    <span className="text-[8px] text-emerald-400 font-bold uppercase tracking-widest mt-1">
+                                      {activeReferenceImage === img.url ? 'Active Reference' : 'Use as Reference'}
+                                    </span>
+                                  </div>
+                                  {activeReferenceImage === img.url && (
+                                    <div className="absolute top-2 right-2 bg-emerald-500 text-white p-1 rounded-full">
+                                      <Check size={12} />
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                            <p className="text-[10px] opacity-40 italic">Select an image to use it as a factual reference for visual generation in the Studio.</p>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1510,6 +1562,31 @@ function AppContent() {
                     </div>
                     <h2 className="text-2xl font-medium leading-tight">{selectedStory.title}</h2>
                   </div>
+
+                  {activeReferenceImage && (
+                    <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-2xl flex items-center justify-between">
+                      <div className="flex items-center space-x-4">
+                        <div className="w-12 h-12 rounded-lg overflow-hidden border border-emerald-200">
+                          <img 
+                            src={activeReferenceImage} 
+                            alt="Reference" 
+                            className="w-full h-full object-cover"
+                            referrerPolicy="no-referrer"
+                          />
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600">Active Factual Reference</p>
+                          <p className="text-xs text-emerald-900 opacity-60 italic">AI will use this image to ground visual generation in facts.</p>
+                        </div>
+                      </div>
+                      <button 
+                        onClick={() => setActiveReferenceImage(null)}
+                        className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 hover:underline"
+                      >
+                        Clear Reference
+                      </button>
+                    </div>
+                  )}
 
                   <div className="space-y-4">
                     <h3 className="text-sm font-bold uppercase tracking-widest opacity-40">1. Select Tone & Style</h3>
@@ -1847,6 +1924,26 @@ function AppContent() {
                                   className="w-full h-full object-cover"
                                   referrerPolicy="no-referrer"
                                 />
+                                <div className="absolute top-4 right-4 flex space-x-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                                  <button 
+                                    onClick={() => setPreviewImage(img)}
+                                    className="p-2 bg-white/90 backdrop-blur-sm text-[#141414] rounded-lg hover:bg-white transition-colors shadow-sm"
+                                  >
+                                    <Maximize2 size={14} />
+                                  </button>
+                                  <button 
+                                    onClick={() => {
+                                      setGeneratedImages(prev => {
+                                        const next = [...prev];
+                                        next[idx] = null;
+                                        return next;
+                                      });
+                                    }}
+                                    className="p-2 bg-rose-500/90 backdrop-blur-sm text-white rounded-lg hover:bg-rose-500 transition-colors shadow-sm"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </div>
                                 {/* Headline Overlay Preview */}
                                 {selectedStory.packages?.[selectedStory.packages.length - 1]?.headline && (
                                   <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-4 pt-12">
@@ -1946,6 +2043,12 @@ function AppContent() {
                                   className="w-full h-full object-cover"
                                   referrerPolicy="no-referrer"
                                 />
+                                <button 
+                                  onClick={() => setPreviewImage(carouselImages[idx]!)}
+                                  className="absolute top-4 right-4 p-2 bg-white/90 backdrop-blur-sm text-[#141414] rounded-lg opacity-0 group-hover:opacity-100 transition-all hover:bg-white shadow-sm"
+                                >
+                                  <Maximize2 size={14} />
+                                </button>
                                 {/* Text Overlay */}
                                 <div className="absolute inset-x-0 bottom-0 p-6 bg-gradient-to-t from-black/80 to-transparent pointer-events-none">
                                   <p className="text-white text-xs font-serif italic leading-relaxed">
@@ -2073,6 +2176,12 @@ function AppContent() {
                                     loop
                                     muted
                                   />
+                                  <button 
+                                    onClick={() => setPreviewImage(reelVideos[idx]!)}
+                                    className="absolute top-4 right-4 p-2 bg-white/90 backdrop-blur-sm text-[#141414] rounded-lg opacity-0 group-hover:opacity-100 transition-all hover:bg-white shadow-sm z-10"
+                                  >
+                                    <Maximize2 size={14} />
+                                  </button>
                                   {/* Text Overlay */}
                                   <div className={`absolute inset-x-0 bottom-0 p-6 bg-gradient-to-t from-black/80 to-transparent pointer-events-none ${idx === 4 ? 'inset-0 flex flex-col items-center justify-center bg-black/60' : ''}`}>
                                     <p className={`text-white font-serif italic ${idx === 4 ? 'text-sm text-center leading-relaxed' : 'text-[10px] leading-tight'}`}>
@@ -2088,6 +2197,12 @@ function AppContent() {
                                     className="w-full h-full object-cover"
                                     referrerPolicy="no-referrer"
                                   />
+                                  <button 
+                                    onClick={() => setPreviewImage(reelImages[idx]!)}
+                                    className="absolute top-4 right-4 p-2 bg-white/90 backdrop-blur-sm text-[#141414] rounded-lg opacity-0 group-hover:opacity-100 transition-all hover:bg-white shadow-sm"
+                                  >
+                                    <Maximize2 size={14} />
+                                  </button>
                                   {/* Text Overlay */}
                                   <div className={`absolute inset-x-0 bottom-0 p-6 bg-gradient-to-t from-black/80 to-transparent pointer-events-none ${idx === 4 ? 'inset-0 flex flex-col items-center justify-center bg-black/60' : ''}`}>
                                     <p className={`text-white font-serif italic ${idx === 4 ? 'text-sm text-center leading-relaxed' : 'text-[10px] leading-tight'}`}>
@@ -2106,16 +2221,14 @@ function AppContent() {
 
                               {/* Action Overlays */}
                               <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center space-y-3 p-4">
-                                {!reelImages[idx] && (
-                                  <button 
-                                    onClick={() => handleGenerateReelImage(idx)}
-                                    disabled={imageLoadingStates[idx]}
-                                    className="w-full py-3 bg-white text-[#141414] rounded-xl text-[10px] font-bold uppercase tracking-widest flex items-center justify-center hover:scale-105 transition-transform"
-                                  >
-                                    {imageLoadingStates[idx] ? <Loader2 size={14} className="animate-spin mr-2" /> : <ImageIcon size={14} className="mr-2" />}
-                                    Gen Image
-                                  </button>
-                                )}
+                                <button 
+                                  onClick={() => handleGenerateReelImage(idx, !!reelImages[idx])}
+                                  disabled={imageLoadingStates[idx]}
+                                  className="w-full py-3 bg-white text-[#141414] rounded-xl text-[10px] font-bold uppercase tracking-widest flex items-center justify-center hover:scale-105 transition-transform"
+                                >
+                                  {imageLoadingStates[idx] ? <Loader2 size={14} className="animate-spin mr-2" /> : <ImageIcon size={14} className="mr-2" />}
+                                  {reelImages[idx] ? 'Get Variation' : 'Gen Image'}
+                                </button>
                                 {reelImages[idx] && !reelVideos[idx] && (
                                   <button 
                                     onClick={() => handleGenerateReelVideo(idx)}
@@ -2147,9 +2260,18 @@ function AppContent() {
                               <p className="text-[10px] font-bold leading-tight text-[#141414]/80">
                                 {shot.script}
                               </p>
-                              <p className="text-[8px] text-[#141414]/40 italic line-clamp-2">
-                                {shot.image_prompt}
-                              </p>
+                              <div className="space-y-1">
+                                <textarea
+                                  value={reelPromptOverrides[idx] || shot.image_prompt}
+                                  onChange={(e) => {
+                                    const next = [...reelPromptOverrides];
+                                    next[idx] = e.target.value;
+                                    setReelPromptOverrides(next);
+                                  }}
+                                  className="w-full p-2 bg-[#F5F5F0] rounded-lg text-[8px] text-[#141414]/60 italic border border-transparent focus:border-[#141414]/10 outline-none resize-none h-12"
+                                  placeholder="Adjust visual prompt..."
+                                />
+                              </div>
                             </div>
                           </div>
                         ))}

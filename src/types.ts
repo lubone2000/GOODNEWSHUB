@@ -20,6 +20,10 @@ export interface Story {
     source_badges: string[];
     confidence_meter: number;
     verification_summary: string;
+    fact_images?: {
+      url: string;
+      title: string;
+    }[];
   };
   status: 'pending' | 'verified' | 'published';
   is_saved?: boolean | number;

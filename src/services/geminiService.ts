@@ -188,8 +188,9 @@ export const geminiService = {
         INSTRUCTIONS:
         1. SEARCH & VERIFY: Use Google Search to find at least 2-3 high-authority sources (university journals, government reports, major news outlets).
         2. EXTRACT CLAIMS: Identify 3-5 specific, verifiable claims.
-        3. SCORE: Provide a verification score (0-100) and editorial scores (1-10).
-        4. PROOF ASSETS: Create short "Claim Cards" (max 60 chars) and "Source Badges" (e.g., "Peer Reviewed").
+        3. FIND FACTUAL IMAGES: Find URLs for 2-3 real-world images that provide visual proof or context for this story (e.g., photos of the event, the people involved, or the location).
+        4. SCORE: Provide a verification score (0-100) and editorial scores (1-10).
+        5. PROOF ASSETS: Create short "Claim Cards" (max 60 chars) and "Source Badges" (e.g., "Peer Reviewed").
 
         OUTPUT FORMAT:
         You MUST return your response as a single valid JSON object.`,
@@ -239,7 +240,18 @@ export const geminiService = {
                     type: Type.ARRAY,
                     items: { type: Type.STRING }
                   },
-                  verification_summary: { type: Type.STRING }
+                  verification_summary: { type: Type.STRING },
+                  fact_images: {
+                    type: Type.ARRAY,
+                    items: {
+                      type: Type.OBJECT,
+                      properties: {
+                        url: { type: Type.STRING },
+                        title: { type: Type.STRING }
+                      },
+                      required: ["url", "title"]
+                    }
+                  }
                 },
                 required: ["claim_cards", "source_badges", "verification_summary"]
               }
@@ -524,7 +536,7 @@ export const geminiService = {
     }
   },
 
-  async generateImage(prompt: string, optionIndex: number = 0, brandSettings?: any) {
+  async generateImage(prompt: string, optionIndex: number = 0, brandSettings?: any, referenceImageUrl?: string) {
     try {
       const visualStyle = brandSettings?.visualStyle || "Cinematic";
       const isDocumentary = visualStyle.toLowerCase().includes('documentary');
@@ -540,7 +552,7 @@ export const geminiService = {
           : "High-impact close-up portrait with deep emotional expression. Cinematic lighting.",
         isDocumentary
           ? "Observational wide shot. Real-world environment, natural color grading, authentic atmosphere. Realistic proportions, no stylized color filters."
-          : "A dramatic 'Before vs After' split scene or a contextual wide shot showing the scale of impact.",
+          : "A dramatic contextual wide shot showing the scale of impact. Single frame focus.",
         isDocumentary
           ? "Candid moment captured on film. Authentic grain, natural skin tones, realistic environment. No artificial saturation, no 'AI-look' smoothness."
           : "A warm, vibrant scene of human or animal connection. Soft, golden hour lighting."
@@ -551,8 +563,8 @@ export const geminiService = {
         : "National Geographic meets Cinematic Film. High detail, vibrant but natural colors.");
       
       const negativePrompt = brandSettings?.negativePrompt || (isDocumentary
-        ? "cgi, 3d render, digital art, glowing, neon, sci-fi, artificial, plastic, oversaturated, fantasy, anime, cartoon, distorted, text, watermark, smooth skin, airbrushed, perfect lighting, symmetrical faces"
-        : "blurry, low quality, distorted, text, watermark, logos");
+        ? "cgi, 3d render, digital art, glowing, neon, sci-fi, artificial, plastic, oversaturated, fantasy, anime, cartoon, distorted, text, watermark, smooth skin, airbrushed, perfect lighting, symmetrical faces, split screen, before after, double image, collage"
+        : "blurry, low quality, distorted, text, watermark, logos, split screen, before after, double image, collage");
 
       console.log(`Generating image (${visualStyle}) option ${optionIndex} for prompt:`, prompt);
       
@@ -561,38 +573,57 @@ export const geminiService = {
         setTimeout(() => reject(new Error("Image generation timed out")), 60000)
       );
 
+      const parts: any[] = [
+        {
+          text: isTypography 
+            ? `Generate a professional GRAPHIC DESIGN background for a news fact slide.
+               Subject: ${prompt}
+               Style: ${variations[optionIndex % variations.length]}
+               
+               Guidelines:
+               - Aspect Ratio: 9:16
+               - This is a BACKGROUND for text. Keep it clean and uncluttered.
+               - Use professional color palettes.
+               - NO distorted faces or complex scenes.
+               - Focus on clean shapes, gradients, or very subtle textures.`
+            : `Generate a ${isDocumentary ? 'REALISTIC DOCUMENTARY' : 'HIGH-IMPACT'} image for a news story. 
+          
+          Subject: ${prompt}
+          Style/Atmosphere: ${styleModifier}. 
+          Variation Direction: ${variations[optionIndex % variations.length]}
+          
+          ${referenceImageUrl ? "REFERENCE IMAGE PROVIDED: Use the provided image as a visual reference for the subject, environment, and factual details. Maintain consistency with the real-world facts shown in the reference." : ""}
+
+          CRITICAL GUIDELINES:
+          - Aspect Ratio: 9:16 (Vertical Story Format)
+          - SINGLE IMAGE: Generate a single, cohesive scene. NO split screens, NO before/after comparisons, NO double images, NO collages.
+          - ${isDocumentary ? 'STRICT REALISM: No digital glow, no sci-fi lighting, no artificial saturation. Must look like real documentary footage.' : 'Focus on the EYES and EMOTION if showing people or animals.'}
+          - Use realistic depth of field.
+          - No text (except for "BEFORE/AFTER" if specifically requested in the prompt), no logos.
+          - Ensure the bottom third of the image is relatively clear for a text overlay.
+          - NEGATIVE PROMPT (Avoid these): ${negativePrompt}`,
+        },
+      ];
+
+      if (referenceImageUrl) {
+        try {
+          const imageResponse = await axios.get(referenceImageUrl, { responseType: 'arraybuffer' });
+          const base64 = Buffer.from(imageResponse.data).toString('base64');
+          parts.unshift({
+            inlineData: {
+              data: base64,
+              mimeType: 'image/png'
+            }
+          });
+        } catch (fetchError) {
+          console.error("Failed to fetch reference image:", fetchError);
+          // Continue without reference image if fetch fails
+        }
+      }
+
       const aiPromise = getAi().models.generateContent({
         model: 'gemini-2.5-flash-image',
-        contents: {
-          parts: [
-            {
-              text: isTypography 
-                ? `Generate a professional GRAPHIC DESIGN background for a news fact slide.
-                   Subject: ${prompt}
-                   Style: ${variations[optionIndex % variations.length]}
-                   
-                   Guidelines:
-                   - Aspect Ratio: 9:16
-                   - This is a BACKGROUND for text. Keep it clean and uncluttered.
-                   - Use professional color palettes.
-                   - NO distorted faces or complex scenes.
-                   - Focus on clean shapes, gradients, or very subtle textures.`
-                : `Generate a ${isDocumentary ? 'REALISTIC DOCUMENTARY' : 'HIGH-IMPACT'} image for a news story. 
-              
-              Subject: ${prompt}
-              Style/Atmosphere: ${styleModifier}. 
-              Variation Direction: ${variations[optionIndex % variations.length]}
-              
-              CRITICAL GUIDELINES:
-              - Aspect Ratio: 9:16 (Vertical Story Format)
-              - ${isDocumentary ? 'STRICT REALISM: No digital glow, no sci-fi lighting, no artificial saturation. Must look like real documentary footage.' : 'Focus on the EYES and EMOTION if showing people or animals.'}
-              - Use realistic depth of field.
-              - No text (except for "BEFORE/AFTER" if specifically requested in the prompt), no logos.
-              - Ensure the bottom third of the image is relatively clear for a text overlay.
-              - NEGATIVE PROMPT (Avoid these): ${negativePrompt}`,
-            },
-          ],
-        },
+        contents: { parts },
         config: {
           imageConfig: {
             aspectRatio: "9:16"

@@ -168,6 +168,7 @@ function AppContent() {
     negativePrompt: 'blurry, low quality, distorted, text, watermark, logos',
     styleModifier: 'National Geographic style, high contrast, vibrant colors'
   });
+  const [brandDraft, setBrandDraft] = useState<any>(null);
 
   // Load/Save Spend from Firestore
   useEffect(() => {
@@ -547,15 +548,28 @@ function AppContent() {
     }
   };
 
-  const handleUpdateBrand = async (newSettings: any) => {
-    if (!user) return;
+  const [isSavingBrand, setIsSavingBrand] = useState(false);
+
+  const handleUpdateBrand = async () => {
+    if (!user || !brandDraft) return;
+    setIsSavingBrand(true);
     try {
-      await setDoc(doc(db, 'brand_settings', user.uid), newSettings);
-      setBrandSettings(newSettings);
+      console.log("Updating brand settings:", brandDraft);
+      await setDoc(doc(db, 'brand_settings', user.uid), brandDraft, { merge: true });
+      setBrandSettings(brandDraft);
     } catch (error) {
       console.error("Failed to update brand settings", error);
+    } finally {
+      setTimeout(() => setIsSavingBrand(false), 1500);
     }
   };
+
+  // Sync draft with settings when tab opens or settings change
+  useEffect(() => {
+    if (activeTab === 'brand' && !brandDraft) {
+      setBrandDraft(brandSettings);
+    }
+  }, [activeTab, brandSettings]);
 
   const handleGenerateContent = async (platform: 'tiktok' | 'instagram') => {
     if (!selectedStory || !user) return;
@@ -2233,7 +2247,7 @@ function AppContent() {
               </motion.div>
             )}
 
-            {activeTab === 'brand' && (
+            {activeTab === 'brand' && brandDraft && (
               <motion.div 
                 key="brand"
                 initial={{ opacity: 0, y: 20 }}
@@ -2243,9 +2257,30 @@ function AppContent() {
               >
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
                   <div className="space-y-8">
-                    <div className="space-y-2">
-                      <h2 className="text-3xl font-serif italic">Brand Identity</h2>
-                      <p className="text-[#141414]/60 text-sm">Define your channel's visual and tonal DNA. These rules guide the AI in every generation.</p>
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-2">
+                        <h2 className="text-3xl font-serif italic">Brand Identity</h2>
+                        <p className="text-[#141414]/60 text-sm">Define your channel's visual and tonal DNA. These rules guide the AI in every generation.</p>
+                      </div>
+                      <div className="flex items-center space-x-4">
+                        {isSavingBrand && (
+                          <motion.div 
+                            initial={{ opacity: 0, x: 20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            className="flex items-center space-x-2 px-3 py-1 bg-emerald-50 text-emerald-600 rounded-full border border-emerald-100"
+                          >
+                            <ShieldCheck className="w-3 h-3" />
+                            <span className="text-[10px] font-bold uppercase tracking-widest">Saved</span>
+                          </motion.div>
+                        )}
+                        <button
+                          onClick={handleUpdateBrand}
+                          disabled={isSavingBrand}
+                          className="px-6 py-2 bg-[#141414] text-white rounded-full text-[10px] font-bold uppercase tracking-widest hover:bg-[#141414]/80 transition-all disabled:opacity-50"
+                        >
+                          {isSavingBrand ? 'Saving...' : 'Save Changes'}
+                        </button>
+                      </div>
                     </div>
 
                     <div className="space-y-6">
@@ -2257,11 +2292,11 @@ function AppContent() {
                             <div className="flex items-center space-x-2">
                               <input 
                                 type="color" 
-                                value={brandSettings.primaryColor}
-                                onChange={(e) => handleUpdateBrand({...brandSettings, primaryColor: e.target.value})}
+                                value={brandDraft.primaryColor}
+                                onChange={(e) => setBrandDraft({...brandDraft, primaryColor: e.target.value})}
                                 className="w-10 h-10 rounded-lg cursor-pointer border-none"
                               />
-                              <span className="text-[10px] font-mono">{brandSettings.primaryColor}</span>
+                              <span className="text-[10px] font-mono">{brandDraft.primaryColor}</span>
                             </div>
                           </div>
                           <div className="space-y-2">
@@ -2269,11 +2304,11 @@ function AppContent() {
                             <div className="flex items-center space-x-2">
                               <input 
                                 type="color" 
-                                value={brandSettings.secondaryColor}
-                                onChange={(e) => handleUpdateBrand({...brandSettings, secondaryColor: e.target.value})}
+                                value={brandDraft.secondaryColor}
+                                onChange={(e) => setBrandDraft({...brandDraft, secondaryColor: e.target.value})}
                                 className="w-10 h-10 rounded-lg cursor-pointer border-none"
                               />
-                              <span className="text-[10px] font-mono">{brandSettings.secondaryColor}</span>
+                              <span className="text-[10px] font-mono">{brandDraft.secondaryColor}</span>
                             </div>
                           </div>
                         </div>
@@ -2282,8 +2317,8 @@ function AppContent() {
                       <div className="space-y-2">
                         <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Typography</label>
                         <select 
-                          value={brandSettings.fontFamily}
-                          onChange={(e) => handleUpdateBrand({...brandSettings, fontFamily: e.target.value})}
+                          value={brandDraft.fontFamily}
+                          onChange={(e) => setBrandDraft({...brandDraft, fontFamily: e.target.value})}
                           className="w-full px-4 py-3 bg-white rounded-xl border border-[#141414]/10 text-xs outline-none focus:border-[#141414]/40 transition-all"
                         >
                           <option value="Inter">Inter (Modern Sans)</option>
@@ -2296,8 +2331,8 @@ function AppContent() {
                       <div className="space-y-2">
                         <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Visual Style</label>
                         <select 
-                          value={brandSettings.visualStyle}
-                          onChange={(e) => handleUpdateBrand({...brandSettings, visualStyle: e.target.value})}
+                          value={brandDraft.visualStyle}
+                          onChange={(e) => setBrandDraft({...brandDraft, visualStyle: e.target.value})}
                           className="w-full px-4 py-3 bg-white rounded-xl border border-[#141414]/10 text-xs outline-none focus:border-[#141414]/40 transition-all"
                         >
                           <option value="Cinematic">Cinematic (Film Look)</option>
@@ -2312,8 +2347,8 @@ function AppContent() {
                         <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Tone of Voice</label>
                         <input 
                           type="text"
-                          value={brandSettings.toneOfVoice}
-                          onChange={(e) => handleUpdateBrand({...brandSettings, toneOfVoice: e.target.value})}
+                          value={brandDraft.toneOfVoice}
+                          onChange={(e) => setBrandDraft({...brandDraft, toneOfVoice: e.target.value})}
                           placeholder="e.g. Hopeful, Professional, Energetic"
                           className="w-full px-4 py-3 bg-white rounded-xl border border-[#141414]/10 text-xs outline-none focus:border-[#141414]/40 transition-all"
                         />
@@ -2326,8 +2361,8 @@ function AppContent() {
                       <div className="space-y-2">
                         <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Style Modifier (AI Prompting)</label>
                         <textarea 
-                          value={brandSettings.styleModifier}
-                          onChange={(e) => handleUpdateBrand({...brandSettings, styleModifier: e.target.value})}
+                          value={brandDraft.styleModifier}
+                          onChange={(e) => setBrandDraft({...brandDraft, styleModifier: e.target.value})}
                           placeholder="Add specific keywords to every image prompt..."
                           rows={3}
                           className="w-full px-4 py-3 bg-[#F5F5F0] rounded-xl border border-[#141414]/10 text-xs outline-none focus:border-[#141414]/40 transition-all resize-none"
@@ -2338,8 +2373,8 @@ function AppContent() {
                       <div className="space-y-2">
                         <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Negative Prompt (Avoid these)</label>
                         <textarea 
-                          value={brandSettings.negativePrompt}
-                          onChange={(e) => handleUpdateBrand({...brandSettings, negativePrompt: e.target.value})}
+                          value={brandDraft.negativePrompt}
+                          onChange={(e) => setBrandDraft({...brandDraft, negativePrompt: e.target.value})}
                           placeholder="What should the AI NEVER generate?"
                           rows={3}
                           className="w-full px-4 py-3 bg-[#F5F5F0] rounded-xl border border-[#141414]/10 text-xs outline-none focus:border-[#141414]/40 transition-all resize-none"

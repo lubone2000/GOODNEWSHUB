@@ -72,6 +72,16 @@ service cloud.firestore {
              data.uid == request.auth.uid;
     }
 
+    function isValidBrandSettings(data) {
+      return (data.primaryColor is string && data.primaryColor.size() <= 20) &&
+             (data.secondaryColor is string && data.secondaryColor.size() <= 20) &&
+             (data.fontFamily is string && data.fontFamily.size() <= 50) &&
+             (data.visualStyle is string && data.visualStyle.size() <= 50) &&
+             (data.toneOfVoice is string && data.toneOfVoice.size() <= 100) &&
+             (data.negativePrompt is string && data.negativePrompt.size() <= 1000) &&
+             (data.styleModifier is string && data.styleModifier.size() <= 1000);
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
@@ -103,6 +113,11 @@ service cloud.firestore {
       allow create: if isAuthenticated() && isValidWebhook(request.resource.data);
       allow update: if (isDocOwner() || isAdmin()) && isValidWebhook(request.resource.data);
       allow delete: if isDocOwner() || isAdmin();
+    }
+
+    match /brand_settings/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow write: if isOwner(userId) && isValidBrandSettings(request.resource.data);
     }
   }
 }

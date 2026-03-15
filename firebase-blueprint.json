@@ -98,6 +98,20 @@
         "created_at": { "type": "string", "format": "date-time" }
       },
       "required": ["name", "url", "uid"]
+    },
+    "BrandSettings": {
+      "title": "BrandSettings",
+      "description": "User-defined brand identity settings.",
+      "type": "object",
+      "properties": {
+        "primaryColor": { "type": "string" },
+        "secondaryColor": { "type": "string" },
+        "fontFamily": { "type": "string" },
+        "visualStyle": { "type": "string" },
+        "toneOfVoice": { "type": "string" },
+        "negativePrompt": { "type": "string" },
+        "styleModifier": { "type": "string" }
+      }
     }
   },
   "firestore": {
@@ -120,6 +134,10 @@
     "/webhooks/{webhookId}": {
       "schema": "Webhook",
       "description": "User-defined webhooks."
+    },
+    "/brand_settings/{userId}": {
+      "schema": "BrandSettings",
+      "description": "User brand identity settings."
     }
   }
 }

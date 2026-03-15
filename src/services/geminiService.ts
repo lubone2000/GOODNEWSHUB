@@ -329,7 +329,7 @@ export const geminiService = {
     }
   },
 
-  async generateContent(story: any, claims: any[], platform: 'tiktok' | 'instagram', style: string = "Professional", customInstruction: string = "", customIdea: string = "", brandSettings?: any) {
+  async generateContent(story: any, claims: any[], platform: string, style: string = "Professional", customInstruction: string = "", customIdea: string = "", brandSettings?: any) {
     try {
       const claimsText = (claims || []).map(c => `- ${c.claim_text || c.text}`).join("\n");
       console.log(`Generating ${platform} content for story: ${story.title}`);
@@ -346,7 +346,7 @@ export const geminiService = {
 
       const response = await getAi().models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: `Create a comprehensive ${platform} content pack for this verified news story.
+        contents: `Create a comprehensive social media content pack for this verified news story.
         
         Story: ${story.title}
         Summary: ${story.summary}
@@ -373,6 +373,8 @@ export const geminiService = {
                1. Very short bulleted facts from the story.
                2. Source attribution (e.g., "Source: ${story.region} news").
                3. Channel Brand: "Sunny Signals Worldwide - The bright side of news".
+        3. Hashtags:
+           - Provide a list of 5-10 suggested hashtags for Instagram and TikTok.
 
         IMPORTANT: 
         - If the Brand Tone is "Documentary", the scripts should be observational, grounded, and authentic. 
@@ -382,8 +384,9 @@ export const geminiService = {
 
         Return ONLY a valid JSON object with:
         {
-          "format": "${platform}_pack",
-          "platform": "${platform}",
+          "format": "social_media_pack",
+          "platform": "social_media",
+          "hashtags": ["#tag1", "#tag2"],
           "carousel": {
             "slides": [
               { "slide_number": 1, "text": "Slide text", "visual_prompt": "Detailed image prompt" },
@@ -409,6 +412,10 @@ export const geminiService = {
             properties: {
               format: { type: Type.STRING },
               platform: { type: Type.STRING },
+              hashtags: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING }
+              },
               carousel: {
                 type: Type.OBJECT,
                 properties: {
@@ -455,7 +462,7 @@ export const geminiService = {
                 required: ["story_text", "shots"]
               }
             },
-            required: ["format", "platform", "carousel", "reel"]
+            required: ["format", "platform", "hashtags", "carousel", "reel"]
           }
         }
       });

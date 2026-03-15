@@ -579,12 +579,12 @@ function AppContent() {
     }
   }, [activeTab, brandSettings]);
 
-  const handleGenerateContent = async (platform: 'tiktok' | 'instagram') => {
+  const handleGenerateContent = async () => {
     if (!selectedStory || !user) return;
     setIsGenerating(true);
     setAiStatus('processing');
     try {
-      console.log(`Requesting ${platform} content generation for story ID: ${selectedStory.docId}...`);
+      console.log(`Requesting social media content generation for story ID: ${selectedStory.docId}...`);
       if (!selectedStory.docId) {
         console.error("No docId found on selectedStory", selectedStory);
         alert("Error: Story ID is missing. Please try re-selecting the story from the feed.");
@@ -595,7 +595,7 @@ function AppContent() {
       const options = await geminiService.generateContent(
         selectedStory, 
         selectedStory.claims || [], 
-        platform, 
+        'social_media', 
         selectedStyle, 
         steeringInstruction,
         customReelIdea,
@@ -632,11 +632,12 @@ function AppContent() {
           } : null;
 
           batch.set(pkgRef, {
-            platform,
-            format: pkg.format || 'unknown',
+            platform: 'social_media',
+            format: pkg.format || 'social_media_pack',
             hook: pkg.hook || '',
             script: pkg.script || '',
             visual_description: pkg.visual_description || '',
+            hashtags: pkg.hashtags || [],
             carousel,
             reel,
             created_at: serverTimestamp()
@@ -648,7 +649,7 @@ function AppContent() {
         // Optimistically update local state to provide immediate feedback
         const newPackages = packagesToSave.map(pkg => ({
           ...pkg,
-          platform,
+          platform: 'social_media',
           docId: `temp-${Date.now()}-${Math.random()}`,
           created_at: new Date()
         }));
@@ -1677,7 +1678,7 @@ function AppContent() {
 
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
-                      <h3 className="text-sm font-bold uppercase tracking-widest opacity-40">4. Select Platform</h3>
+                      <h3 className="text-sm font-bold uppercase tracking-widest opacity-40">4. Generate Content</h3>
                       <button 
                         onClick={() => handleSelectStory(selectedStory.docId, false)}
                         className="text-[10px] font-bold uppercase tracking-widest opacity-40 hover:opacity-100 flex items-center"
@@ -1685,26 +1686,30 @@ function AppContent() {
                         <RefreshCw size={10} className={`mr-1 ${loading ? 'animate-spin' : ''}`} /> Refresh Studio
                       </button>
                     </div>
-                    <div className="flex space-x-4">
-                      {['Instagram', 'TikTok'].map(platform => (
-                        <div key={platform} className="flex flex-col space-y-2">
-                          <button
-                            onClick={() => handleGenerateContent(platform.toLowerCase() as any)}
-                            disabled={loading || isGenerating}
-                            className="px-6 py-3 rounded-full border border-[#141414]/10 bg-[#141414] text-white hover:opacity-90 transition-all text-sm font-bold uppercase tracking-widest disabled:opacity-50"
-                          >
-                            Generate {platform} Pack
-                          </button>
-                          {selectedStory.packages?.some((p: any) => p.platform === platform.toLowerCase()) && (
-                            <button 
-                              onClick={() => handleClearPackages(platform.toLowerCase())}
-                              className="text-[10px] font-bold uppercase tracking-widest opacity-40 hover:opacity-100 flex items-center justify-center"
-                            >
-                              <RefreshCw size={10} className="mr-1" /> Redo {platform}
-                            </button>
-                          )}
-                        </div>
-                      ))}
+                    <div className="flex flex-col space-y-4">
+                      <button
+                        onClick={() => handleGenerateContent()}
+                        disabled={loading || isGenerating}
+                        className="w-full py-4 rounded-full border border-[#141414]/10 bg-[#141414] text-white hover:opacity-90 transition-all text-sm font-bold uppercase tracking-widest disabled:opacity-50 flex items-center justify-center space-x-2"
+                      >
+                        {isGenerating ? (
+                          <>
+                            <RefreshCw size={14} className="animate-spin" />
+                            <span>Generating Social Media Pack...</span>
+                          </>
+                        ) : (
+                          <span>Generate Social Media Pack</span>
+                        )}
+                      </button>
+                      
+                      {selectedStory.packages?.some((p: any) => p.platform === 'social_media') && (
+                        <button 
+                          onClick={() => handleClearPackages('social_media')}
+                          className="text-[10px] font-bold uppercase tracking-widest opacity-40 hover:opacity-100 flex items-center justify-center"
+                        >
+                          <RefreshCw size={10} className="mr-1" /> Redo Social Media Pack
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1732,11 +1737,12 @@ function AppContent() {
                             <button 
                               onClick={() => {
                                 let text = '';
-                                if (pkg.format === 'instagram_pack') {
+                                if (pkg.format === 'instagram_pack' || pkg.format === 'social_media_pack') {
                                   text += `CAROUSEL:\n`;
                                   pkg.carousel?.slides.forEach((s: any) => text += `Slide ${s.slide_number}: ${s.text}\n`);
                                   text += `\nREEL:\nNarrative: ${pkg.reel?.story_text}\n`;
                                   pkg.reel?.shots.forEach((s: any) => text += `Shot ${s.shot_number}: ${s.script}\n`);
+                                  if (pkg.hashtags) text += `\nHASHTAGS:\n${pkg.hashtags.join(' ')}\n`;
                                 } else {
                                   text = `Hook: ${pkg.hook}\n\nScript: ${pkg.script}`;
                                 }
@@ -1751,8 +1757,31 @@ function AppContent() {
                           </div>
                         </div>
 
-                        {pkg.format === 'instagram_pack' ? (
+                        {pkg.format === 'instagram_pack' || pkg.format === 'social_media_pack' ? (
                           <div className="space-y-12">
+                            {/* Hashtags Section */}
+                            {pkg.hashtags && pkg.hashtags.length > 0 && (
+                              <div className="space-y-4">
+                                <h3 className="text-sm font-bold uppercase tracking-widest opacity-40">Suggested Hashtags (Instagram & TikTok)</h3>
+                                <div className="flex flex-wrap gap-2">
+                                  {pkg.hashtags.map((tag: string, idx: number) => (
+                                    <span key={idx} className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-xs font-medium border border-emerald-100">
+                                      {tag}
+                                    </span>
+                                  ))}
+                                  <button 
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(pkg.hashtags.join(' '));
+                                      alert('Hashtags copied!');
+                                    }}
+                                    className="px-3 py-1 bg-[#141414] text-white rounded-full text-[10px] font-bold uppercase tracking-widest hover:opacity-90 transition-all"
+                                  >
+                                    Copy All
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
                             {/* Carousel Section */}
                             <div className="space-y-6">
                               <div className="flex items-center justify-between">

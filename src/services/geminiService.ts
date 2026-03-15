@@ -311,11 +311,21 @@ export const geminiService = {
     }
   },
 
-  async generateContent(story: any, claims: any[], platform: 'tiktok' | 'instagram', style: string = "Professional", customInstruction: string = "", customIdea: string = "") {
+  async generateContent(story: any, claims: any[], platform: 'tiktok' | 'instagram', style: string = "Professional", customInstruction: string = "", customIdea: string = "", brandSettings?: any) {
     try {
       const claimsText = (claims || []).map(c => `- ${c.claim_text || c.text}`).join("\n");
       console.log(`Generating ${platform} content for story: ${story.title}`);
       
+      const brandContext = brandSettings ? `
+      BRAND IDENTITY RULES:
+      - Primary Color: ${brandSettings.primaryColor}
+      - Secondary Color: ${brandSettings.secondaryColor}
+      - Font Family: ${brandSettings.fontFamily}
+      - Visual Style: ${brandSettings.visualStyle}
+      - Tone of Voice: ${brandSettings.toneOfVoice}
+      - Style Modifier: ${brandSettings.styleModifier}
+      ` : "";
+
       const response = await getAi().models.generateContent({
         model: "gemini-3-flash-preview",
         contents: `Create a comprehensive ${platform} content pack for this verified news story.
@@ -325,6 +335,8 @@ export const geminiService = {
         ${customIdea ? `Creative Override: ${customIdea} (Use this as the creative angle/theme for the content while keeping the facts from the story)` : ""}
         Verified Claims:
         ${claimsText}
+
+        ${brandContext}
 
         Primary Tone/Style: ${style}
         ${customInstruction ? `STEERING INSTRUCTION: ${customInstruction}` : ""}
@@ -506,13 +518,17 @@ export const geminiService = {
     }
   },
 
-  async generateImage(prompt: string, optionIndex: number = 0) {
+  async generateImage(prompt: string, optionIndex: number = 0, brandSettings?: any) {
     try {
       const variations = [
         "High-impact close-up portrait with deep emotional expression. Cinematic lighting.",
         "A dramatic 'Before vs After' split scene or a contextual wide shot showing the scale of impact.",
         "A warm, vibrant scene of human or animal connection. Soft, golden hour lighting."
       ];
+
+      const styleModifier = brandSettings?.styleModifier || "National Geographic meets Cinematic Film. High detail, vibrant but natural colors.";
+      const visualStyle = brandSettings?.visualStyle || "Cinematic";
+      const negativePrompt = brandSettings?.negativePrompt || "blurry, low quality, distorted, text, watermark, logos";
 
       console.log(`Generating image option ${optionIndex} for prompt:`, prompt);
       
@@ -528,7 +544,7 @@ export const geminiService = {
             {
               text: `Generate a high-impact, professional, emotionally resonant image for a positive news story. 
               
-              Style: National Geographic meets Cinematic Film. High detail, vibrant but natural colors.
+              Style: ${styleModifier}. Overall Visual Theme: ${visualStyle}.
               Subject: ${prompt}
               Variation Instruction: ${variations[optionIndex % variations.length]}
               
@@ -537,7 +553,8 @@ export const geminiService = {
               - Focus on the EYES and EMOTION if showing people or animals.
               - Use shallow depth of field (blurred background) to make the subject pop.
               - No text, no logos, no identifiable faces of real public figures.
-              - Ensure the bottom third of the image is relatively clear for a text overlay.`,
+              - Ensure the bottom third of the image is relatively clear for a text overlay.
+              - NEGATIVE PROMPT (Avoid these): ${negativePrompt}`,
             },
           ],
         },
@@ -609,13 +626,19 @@ export const geminiService = {
     }
   },
 
-  async generatePromptVariations(basePrompt: string) {
+  async generatePromptVariations(basePrompt: string, brandSettings?: any) {
     try {
       console.log("Generating variations for prompt:", basePrompt);
+      const brandContext = brandSettings ? `
+      Keep in mind the brand's visual style: ${brandSettings.visualStyle} and style modifier: ${brandSettings.styleModifier}.
+      ` : "";
+
       const response = await getAi().models.generateContent({
         model: "gemini-3-flash-preview",
         contents: `Generate 3 distinct variations of the following visual prompt for an image generation model. 
         Each variation should explore a different cinematic style, lighting, or camera angle while keeping the core subject the same.
+        
+        ${brandContext}
         
         Base Prompt: ${basePrompt}
         

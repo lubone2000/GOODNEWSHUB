@@ -26,7 +26,8 @@ import {
   Play,
   Clapperboard,
   Loader2,
-  Layers
+  Layers,
+  Palette
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { geminiService, klingService } from './services/geminiService';
@@ -134,7 +135,7 @@ function AppContent() {
   const [selectedStoryId, setSelectedStoryId] = useState<string | null>(null);
   const [selectedStory, setSelectedStory] = useState<any>(null);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'feed' | 'saved' | 'detail' | 'studio' | 'visual' | 'export'>('feed');
+  const [activeTab, setActiveTab] = useState<'feed' | 'saved' | 'detail' | 'studio' | 'visual' | 'export' | 'brand'>('feed');
   const [searchQuery, setSearchQuery] = useState('Sustainability and Innovation');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
@@ -158,6 +159,15 @@ function AppContent() {
   const [videoLoadingStates, setVideoLoadingStates] = useState<boolean[]>([false, false, false, false]);
   const [imageLoadingStates, setImageLoadingStates] = useState<boolean[]>([false, false, false, false]);
   const [customReelIdea, setCustomReelIdea] = useState<string>('');
+  const [brandSettings, setBrandSettings] = useState<any>({
+    primaryColor: '#141414',
+    secondaryColor: '#F5F5F0',
+    fontFamily: 'Inter',
+    visualStyle: 'Cinematic',
+    toneOfVoice: 'Hopeful & Professional',
+    negativePrompt: 'blurry, low quality, distorted, text, watermark, logos',
+    styleModifier: 'National Geographic style, high contrast, vibrant colors'
+  });
 
   // Load/Save Spend from Firestore
   useEffect(() => {
@@ -234,9 +244,18 @@ function AppContent() {
       console.error("Firestore Webhooks Error:", error);
     });
 
+    // Brand Settings Listener
+    const brandDoc = doc(db, 'brand_settings', user.uid);
+    const unsubscribeBrand = onSnapshot(brandDoc, (snapshot) => {
+      if (snapshot.exists()) {
+        setBrandSettings(snapshot.data());
+      }
+    });
+
     return () => {
       unsubscribeStories();
       unsubscribeWebhooks();
+      unsubscribeBrand();
     };
   }, [user]);
 
@@ -528,6 +547,16 @@ function AppContent() {
     }
   };
 
+  const handleUpdateBrand = async (newSettings: any) => {
+    if (!user) return;
+    try {
+      await setDoc(doc(db, 'brand_settings', user.uid), newSettings);
+      setBrandSettings(newSettings);
+    } catch (error) {
+      console.error("Failed to update brand settings", error);
+    }
+  };
+
   const handleGenerateContent = async (platform: 'tiktok' | 'instagram') => {
     if (!selectedStory || !user) return;
     setIsGenerating(true);
@@ -547,7 +576,8 @@ function AppContent() {
         platform, 
         selectedStyle, 
         steeringInstruction,
-        customReelIdea
+        customReelIdea,
+        brandSettings // Pass brand settings
       );
       
       console.log(`AI Response options:`, options);
@@ -659,7 +689,7 @@ function AppContent() {
     if (!selectedStory || !user) return;
     setAiStatus('processing');
     try {
-      const variations = await geminiService.generatePromptVariations(basePrompt);
+      const variations = await geminiService.generatePromptVariations(basePrompt, brandSettings);
       if (variations && variations.length > 0) {
         const pkgRef = doc(db, 'stories', selectedStory.docId, 'packages', packageDocId);
         const pkg = selectedStory.packages.find((p: any) => p.docId === packageDocId);
@@ -728,7 +758,7 @@ function AppContent() {
       );
       
       const generationPromise = (async () => {
-        const promises = [0, 1, 2].map(i => geminiService.generateImage(prompt, i));
+        const promises = [0, 1, 2].map(i => geminiService.generateImage(prompt, i, brandSettings));
         return await Promise.all(promises);
       })();
 
@@ -1000,6 +1030,7 @@ function AppContent() {
           <NavIcon icon={<FileText size={24} />} active={activeTab === 'detail'} onClick={() => setActiveTab('detail')} disabled={!selectedStoryId} label="Detail" />
           <NavIcon icon={<Plus size={24} />} active={activeTab === 'studio'} onClick={() => setActiveTab('studio')} disabled={!selectedStoryId} label="Studio" />
           <NavIcon icon={<ImageIcon size={24} />} active={activeTab === 'visual'} onClick={() => setActiveTab('visual')} disabled={!selectedStoryId} label="Visual" />
+          <NavIcon icon={<Palette size={24} />} active={activeTab === 'brand'} onClick={() => setActiveTab('brand')} label="Brand" />
           <NavIcon icon={<Download size={24} />} active={activeTab === 'export'} onClick={() => setActiveTab('export')} disabled={!selectedStoryId} label="Export" />
         </div>
       </nav>
@@ -1013,6 +1044,7 @@ function AppContent() {
             {activeTab === 'detail' && "Evidence Hub"}
             {activeTab === 'studio' && "Content Studio"}
             {activeTab === 'visual' && "Visual Studio"}
+            {activeTab === 'brand' && "Brand Identity"}
             {activeTab === 'export' && "Export Center"}
           </h1>
           <div className="flex items-center space-x-6">
@@ -2196,6 +2228,137 @@ function AppContent() {
                   <div className="flex items-center justify-center space-x-2 text-[10px] font-bold uppercase tracking-widest opacity-40">
                     <ShieldCheck size={12} />
                     <span>Evidence-Pack Included</span>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+
+            {activeTab === 'brand' && (
+              <motion.div 
+                key="brand"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className="max-w-4xl mx-auto space-y-12 pb-20"
+              >
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                  <div className="space-y-8">
+                    <div className="space-y-2">
+                      <h2 className="text-3xl font-serif italic">Brand Identity</h2>
+                      <p className="text-[#141414]/60 text-sm">Define your channel's visual and tonal DNA. These rules guide the AI in every generation.</p>
+                    </div>
+
+                    <div className="space-y-6">
+                      <div className="space-y-4">
+                        <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Visual Language</label>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <p className="text-[10px] opacity-60">Primary Color</p>
+                            <div className="flex items-center space-x-2">
+                              <input 
+                                type="color" 
+                                value={brandSettings.primaryColor}
+                                onChange={(e) => handleUpdateBrand({...brandSettings, primaryColor: e.target.value})}
+                                className="w-10 h-10 rounded-lg cursor-pointer border-none"
+                              />
+                              <span className="text-[10px] font-mono">{brandSettings.primaryColor}</span>
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <p className="text-[10px] opacity-60">Secondary Color</p>
+                            <div className="flex items-center space-x-2">
+                              <input 
+                                type="color" 
+                                value={brandSettings.secondaryColor}
+                                onChange={(e) => handleUpdateBrand({...brandSettings, secondaryColor: e.target.value})}
+                                className="w-10 h-10 rounded-lg cursor-pointer border-none"
+                              />
+                              <span className="text-[10px] font-mono">{brandSettings.secondaryColor}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Typography</label>
+                        <select 
+                          value={brandSettings.fontFamily}
+                          onChange={(e) => handleUpdateBrand({...brandSettings, fontFamily: e.target.value})}
+                          className="w-full px-4 py-3 bg-white rounded-xl border border-[#141414]/10 text-xs outline-none focus:border-[#141414]/40 transition-all"
+                        >
+                          <option value="Inter">Inter (Modern Sans)</option>
+                          <option value="Playfair Display">Playfair Display (Elegant Serif)</option>
+                          <option value="Space Grotesk">Space Grotesk (Tech/Modern)</option>
+                          <option value="JetBrains Mono">JetBrains Mono (Technical)</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Visual Style</label>
+                        <select 
+                          value={brandSettings.visualStyle}
+                          onChange={(e) => handleUpdateBrand({...brandSettings, visualStyle: e.target.value})}
+                          className="w-full px-4 py-3 bg-white rounded-xl border border-[#141414]/10 text-xs outline-none focus:border-[#141414]/40 transition-all"
+                        >
+                          <option value="Cinematic">Cinematic (Film Look)</option>
+                          <option value="Minimalist">Minimalist (Clean/Simple)</option>
+                          <option value="Vibrant">Vibrant (High Saturation)</option>
+                          <option value="Documentary">Documentary (Raw/Real)</option>
+                          <option value="Artistic">Artistic (Stylized)</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Tone of Voice</label>
+                        <input 
+                          type="text"
+                          value={brandSettings.toneOfVoice}
+                          onChange={(e) => handleUpdateBrand({...brandSettings, toneOfVoice: e.target.value})}
+                          placeholder="e.g. Hopeful, Professional, Energetic"
+                          className="w-full px-4 py-3 bg-white rounded-xl border border-[#141414]/10 text-xs outline-none focus:border-[#141414]/40 transition-all"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-8">
+                    <div className="p-8 bg-white rounded-[2rem] border border-[#141414]/5 shadow-sm space-y-6">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Style Modifier (AI Prompting)</label>
+                        <textarea 
+                          value={brandSettings.styleModifier}
+                          onChange={(e) => handleUpdateBrand({...brandSettings, styleModifier: e.target.value})}
+                          placeholder="Add specific keywords to every image prompt..."
+                          rows={3}
+                          className="w-full px-4 py-3 bg-[#F5F5F0] rounded-xl border border-[#141414]/10 text-xs outline-none focus:border-[#141414]/40 transition-all resize-none"
+                        />
+                        <p className="text-[8px] opacity-40">Example: "8k resolution, photorealistic, soft bokeh, warm lighting"</p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Negative Prompt (Avoid these)</label>
+                        <textarea 
+                          value={brandSettings.negativePrompt}
+                          onChange={(e) => handleUpdateBrand({...brandSettings, negativePrompt: e.target.value})}
+                          placeholder="What should the AI NEVER generate?"
+                          rows={3}
+                          className="w-full px-4 py-3 bg-[#F5F5F0] rounded-xl border border-[#141414]/10 text-xs outline-none focus:border-[#141414]/40 transition-all resize-none"
+                        />
+                        <p className="text-[8px] opacity-40">Example: "cartoon, low quality, text, logos, distorted faces"</p>
+                      </div>
+                    </div>
+
+                    <div className="p-8 bg-[#141414] text-white rounded-[2rem] space-y-4">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center">
+                          <Zap size={16} className="text-amber-400" />
+                        </div>
+                        <h4 className="text-sm font-bold">CI Rules Active</h4>
+                      </div>
+                      <p className="text-[10px] text-white/60 leading-relaxed">
+                        Your Brand Identity settings are automatically injected into every AI request. This ensures that even when generating new content, the visual language remains coherent with your channel's DNA.
+                      </p>
+                    </div>
                   </div>
                 </div>
               </motion.div>

@@ -1449,12 +1449,31 @@ function AppContent() {
                                   className={`relative group cursor-pointer rounded-2xl overflow-hidden border-2 transition-all ${activeReferenceImage === img.url ? 'border-emerald-500 shadow-lg' : 'border-transparent'}`}
                                   onClick={() => setActiveReferenceImage(activeReferenceImage === img.url ? null : img.url)}
                                 >
-                                  <img 
-                                    src={img.url} 
-                                    alt={img.title} 
-                                    className="w-full aspect-square object-cover"
-                                    referrerPolicy="no-referrer"
-                                  />
+                                  <div className="w-full aspect-square bg-[#F5F5F0] flex items-center justify-center relative">
+                                    <img 
+                                      src={`/api/proxy-image?url=${encodeURIComponent(img.url)}`} 
+                                      alt={img.title} 
+                                      className="w-full h-full object-cover"
+                                      referrerPolicy="no-referrer"
+                                      onError={(e) => {
+                                        const target = e.target as HTMLImageElement;
+                                        // If proxy fails, try direct as a last resort
+                                        if (!target.dataset.triedDirect) {
+                                          target.dataset.triedDirect = 'true';
+                                          target.src = img.url;
+                                          return;
+                                        }
+                                        target.style.display = 'none';
+                                        const parent = target.parentElement;
+                                        if (parent) {
+                                          const icon = document.createElement('div');
+                                          icon.className = "flex flex-col items-center justify-center p-4 text-center opacity-20";
+                                          icon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg><p class="text-[8px] mt-2 font-bold uppercase tracking-widest">Preview Unavailable</p>`;
+                                          parent.appendChild(icon);
+                                        }
+                                      }}
+                                    />
+                                  </div>
                                   <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-3">
                                     <p className="text-[10px] text-white font-bold leading-tight line-clamp-2">{img.title}</p>
                                     <span className="text-[8px] text-emerald-400 font-bold uppercase tracking-widest mt-1">
@@ -1568,10 +1587,17 @@ function AppContent() {
                       <div className="flex items-center space-x-4">
                         <div className="w-12 h-12 rounded-lg overflow-hidden border border-emerald-200">
                           <img 
-                            src={activeReferenceImage} 
+                            src={`/api/proxy-image?url=${encodeURIComponent(activeReferenceImage)}`} 
                             alt="Reference" 
                             className="w-full h-full object-cover"
                             referrerPolicy="no-referrer"
+                            onError={(e) => {
+                              const target = e.target as HTMLImageElement;
+                              if (!target.dataset.triedDirect) {
+                                target.dataset.triedDirect = 'true';
+                                target.src = activeReferenceImage;
+                              }
+                            }}
                           />
                         </div>
                         <div>

@@ -188,7 +188,8 @@ export const geminiService = {
         INSTRUCTIONS:
         1. SEARCH & VERIFY: Use Google Search to find at least 2-3 high-authority sources (university journals, government reports, major news outlets).
         2. EXTRACT CLAIMS: Identify 3-5 specific, verifiable claims.
-        3. FIND FACTUAL IMAGES: Find URLs for 2-3 real-world images that provide visual proof or context for this story (e.g., photos of the event, the people involved, or the location).
+        3. FIND FACTUAL IMAGES: Find URLs for 2-3 real-world images that provide visual proof or context for this story (e.g., photos of the event, the people involved, or the location). 
+           CRITICAL: You MUST provide DIRECT image URLs (ending in .jpg, .png, .webp, etc.) whenever possible. Avoid links to news articles or gallery pages. If you cannot find a direct image URL, provide the most relevant source URL.
         4. SCORE: Provide a verification score (0-100) and editorial scores (1-10).
         5. PROOF ASSETS: Create short "Claim Cards" (max 60 chars) and "Source Badges" (e.g., "Peer Reviewed").
 
@@ -607,7 +608,9 @@ export const geminiService = {
 
       if (referenceImageUrl) {
         try {
-          const imageResponse = await axios.get(referenceImageUrl, { responseType: 'arraybuffer' });
+          // Use our proxy to bypass CORS
+          const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(referenceImageUrl)}`;
+          const imageResponse = await axios.get(proxyUrl, { responseType: 'arraybuffer' });
           const base64 = Buffer.from(imageResponse.data).toString('base64');
           parts.unshift({
             inlineData: {
@@ -616,7 +619,7 @@ export const geminiService = {
             }
           });
         } catch (fetchError) {
-          console.error("Failed to fetch reference image:", fetchError);
+          console.error("Failed to fetch reference image via proxy:", fetchError);
           // Continue without reference image if fetch fails
         }
       }

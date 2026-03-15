@@ -2,6 +2,7 @@ import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
+import axios from "axios";
 
 dotenv.config();
 
@@ -25,6 +26,30 @@ async function startServer() {
   app.get("/healthz", (req, res) => res.status(200).send("OK"));
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", time: new Date().toISOString() });
+  });
+
+  // Image Proxy to bypass CORS
+  app.get("/api/proxy-image", async (req, res) => {
+    const imageUrl = req.query.url as string;
+    if (!imageUrl) {
+      return res.status(400).send("URL is required");
+    }
+
+    try {
+      const response = await axios.get(imageUrl, {
+        responseType: "arraybuffer",
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        },
+      });
+
+      const contentType = response.headers["content-type"];
+      res.setHeader("Content-Type", contentType);
+      res.send(response.data);
+    } catch (error) {
+      console.error("Proxy error:", error);
+      res.status(500).send("Failed to fetch image");
+    }
   });
 
   // Logging middleware

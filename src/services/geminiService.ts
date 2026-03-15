@@ -350,11 +350,17 @@ export const geminiService = {
            - Shots 1-4: Detailed cinematic visual prompts and short narration scripts.
            - For each shot, provide 3 variations of the visual prompt.
            - Shot 5 (MANDATORY): A "Typography/Facts" slide. 
-             - Visual Prompt: "A clean, modern typography slide with a vibrant background, professional layout."
+             - Visual Prompt: "A professional graphic design typography slide, clean background, modern layout for news facts."
              - Script: Must include:
                1. Very short bulleted facts from the story.
                2. Source attribution (e.g., "Source: ${story.region} news").
                3. Channel Brand: "Sunny Signals Worldwide - The bright side of news".
+
+        IMPORTANT: 
+        - If the Brand Tone is "Documentary", the scripts should be observational, grounded, and authentic. 
+        - Avoid overly dramatic or "marketing" language. 
+        - Focus on the human or environmental impact.
+        - Ensure Shot 5 is strictly a data/fact summary slide.
 
         Return ONLY a valid JSON object with:
         {
@@ -520,17 +526,35 @@ export const geminiService = {
 
   async generateImage(prompt: string, optionIndex: number = 0, brandSettings?: any) {
     try {
-      const variations = [
-        "High-impact close-up portrait with deep emotional expression. Cinematic lighting.",
-        "A dramatic 'Before vs After' split scene or a contextual wide shot showing the scale of impact.",
-        "A warm, vibrant scene of human or animal connection. Soft, golden hour lighting."
+      const visualStyle = brandSettings?.visualStyle || "Cinematic";
+      const isDocumentary = visualStyle.toLowerCase().includes('documentary');
+      const isTypography = prompt.toLowerCase().includes('typography') || prompt.toLowerCase().includes('fact slide');
+
+      const variations = isTypography ? [
+        "Clean, minimal graphic design. Solid or subtle gradient background. Professional layout.",
+        "Modern infographic style. High contrast, clean lines. Plenty of negative space for text overlays.",
+        "Sophisticated editorial layout. Minimalist aesthetic. High-end magazine feel."
+      ] : [
+        isDocumentary 
+          ? "Raw, unedited documentary footage style. Natural lighting, handheld camera feel, authentic textures. No digital glow, no sci-fi elements, no artificial bokeh."
+          : "High-impact close-up portrait with deep emotional expression. Cinematic lighting.",
+        isDocumentary
+          ? "Observational wide shot. Real-world environment, natural color grading, authentic atmosphere. Realistic proportions, no stylized color filters."
+          : "A dramatic 'Before vs After' split scene or a contextual wide shot showing the scale of impact.",
+        isDocumentary
+          ? "Candid moment captured on film. Authentic grain, natural skin tones, realistic environment. No artificial saturation, no 'AI-look' smoothness."
+          : "A warm, vibrant scene of human or animal connection. Soft, golden hour lighting."
       ];
 
-      const styleModifier = brandSettings?.styleModifier || "National Geographic meets Cinematic Film. High detail, vibrant but natural colors.";
-      const visualStyle = brandSettings?.visualStyle || "Cinematic";
-      const negativePrompt = brandSettings?.negativePrompt || "blurry, low quality, distorted, text, watermark, logos";
+      const styleModifier = brandSettings?.styleModifier || (isDocumentary 
+        ? "Shot on 35mm film, documentary photography, authentic, realistic, natural lighting, Pulitzer Prize winning style, raw photo, grainy texture, realistic skin, unedited."
+        : "National Geographic meets Cinematic Film. High detail, vibrant but natural colors.");
+      
+      const negativePrompt = brandSettings?.negativePrompt || (isDocumentary
+        ? "cgi, 3d render, digital art, glowing, neon, sci-fi, artificial, plastic, oversaturated, fantasy, anime, cartoon, distorted, text, watermark, smooth skin, airbrushed, perfect lighting, symmetrical faces"
+        : "blurry, low quality, distorted, text, watermark, logos");
 
-      console.log(`Generating image option ${optionIndex} for prompt:`, prompt);
+      console.log(`Generating image (${visualStyle}) option ${optionIndex} for prompt:`, prompt);
       
       // Create a timeout promise
       const timeoutPromise = new Promise((_, reject) => 
@@ -542,17 +566,28 @@ export const geminiService = {
         contents: {
           parts: [
             {
-              text: `Generate a high-impact, professional, emotionally resonant image for a positive news story. 
+              text: isTypography 
+                ? `Generate a professional GRAPHIC DESIGN background for a news fact slide.
+                   Subject: ${prompt}
+                   Style: ${variations[optionIndex % variations.length]}
+                   
+                   Guidelines:
+                   - Aspect Ratio: 9:16
+                   - This is a BACKGROUND for text. Keep it clean and uncluttered.
+                   - Use professional color palettes.
+                   - NO distorted faces or complex scenes.
+                   - Focus on clean shapes, gradients, or very subtle textures.`
+                : `Generate a ${isDocumentary ? 'REALISTIC DOCUMENTARY' : 'HIGH-IMPACT'} image for a news story. 
               
-              Style: ${styleModifier}. Overall Visual Theme: ${visualStyle}.
               Subject: ${prompt}
-              Variation Instruction: ${variations[optionIndex % variations.length]}
+              Style/Atmosphere: ${styleModifier}. 
+              Variation Direction: ${variations[optionIndex % variations.length]}
               
-              Guidelines:
+              CRITICAL GUIDELINES:
               - Aspect Ratio: 9:16 (Vertical Story Format)
-              - Focus on the EYES and EMOTION if showing people or animals.
-              - Use shallow depth of field (blurred background) to make the subject pop.
-              - No text, no logos, no identifiable faces of real public figures.
+              - ${isDocumentary ? 'STRICT REALISM: No digital glow, no sci-fi lighting, no artificial saturation. Must look like real documentary footage.' : 'Focus on the EYES and EMOTION if showing people or animals.'}
+              - Use realistic depth of field.
+              - No text (except for "BEFORE/AFTER" if specifically requested in the prompt), no logos.
               - Ensure the bottom third of the image is relatively clear for a text overlay.
               - NEGATIVE PROMPT (Avoid these): ${negativePrompt}`,
             },

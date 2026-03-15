@@ -1939,12 +1939,20 @@ function AppContent() {
                           
                           <div className="aspect-square bg-[#F5F5F0] rounded-3xl overflow-hidden border border-[#141414]/5 relative group">
                             {carouselImages[idx] ? (
-                              <img 
-                                src={carouselImages[idx]!} 
-                                alt={`Slide ${idx + 1}`} 
-                                className="w-full h-full object-cover"
-                                referrerPolicy="no-referrer"
-                              />
+                              <>
+                                <img 
+                                  src={carouselImages[idx]!} 
+                                  alt={`Slide ${idx + 1}`} 
+                                  className="w-full h-full object-cover"
+                                  referrerPolicy="no-referrer"
+                                />
+                                {/* Text Overlay */}
+                                <div className="absolute inset-x-0 bottom-0 p-6 bg-gradient-to-t from-black/80 to-transparent pointer-events-none">
+                                  <p className="text-white text-xs font-serif italic leading-relaxed">
+                                    {slide.text}
+                                  </p>
+                                </div>
+                              </>
                             ) : (
                               <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center space-y-4">
                                 <div className="w-12 h-12 rounded-full bg-white/50 flex items-center justify-center">
@@ -2056,21 +2064,37 @@ function AppContent() {
                             
                             <div className="aspect-[9/16] bg-[#F5F5F0] rounded-3xl overflow-hidden border border-[#141414]/5 relative group">
                               {reelVideos[idx] ? (
-                                <video 
-                                  src={reelVideos[idx]!} 
-                                  className="w-full h-full object-cover"
-                                  controls
-                                  autoPlay
-                                  loop
-                                  muted
-                                />
+                                <>
+                                  <video 
+                                    src={reelVideos[idx]!} 
+                                    className="w-full h-full object-cover"
+                                    controls
+                                    autoPlay
+                                    loop
+                                    muted
+                                  />
+                                  {/* Text Overlay */}
+                                  <div className={`absolute inset-x-0 bottom-0 p-6 bg-gradient-to-t from-black/80 to-transparent pointer-events-none ${idx === 4 ? 'inset-0 flex flex-col items-center justify-center bg-black/60' : ''}`}>
+                                    <p className={`text-white font-serif italic ${idx === 4 ? 'text-sm text-center leading-relaxed' : 'text-[10px] leading-tight'}`}>
+                                      {shot.script}
+                                    </p>
+                                  </div>
+                                </>
                               ) : reelImages[idx] ? (
-                                <img 
-                                  src={reelImages[idx]!} 
-                                  alt={`Shot ${idx + 1}`} 
-                                  className="w-full h-full object-cover"
-                                  referrerPolicy="no-referrer"
-                                />
+                                <>
+                                  <img 
+                                    src={reelImages[idx]!} 
+                                    alt={`Shot ${idx + 1}`} 
+                                    className="w-full h-full object-cover"
+                                    referrerPolicy="no-referrer"
+                                  />
+                                  {/* Text Overlay */}
+                                  <div className={`absolute inset-x-0 bottom-0 p-6 bg-gradient-to-t from-black/80 to-transparent pointer-events-none ${idx === 4 ? 'inset-0 flex flex-col items-center justify-center bg-black/60' : ''}`}>
+                                    <p className={`text-white font-serif italic ${idx === 4 ? 'text-sm text-center leading-relaxed' : 'text-[10px] leading-tight'}`}>
+                                      {shot.script}
+                                    </p>
+                                  </div>
+                                </>
                               ) : (
                                 <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center space-y-4">
                                   <div className="w-12 h-12 rounded-full bg-white/50 flex items-center justify-center">

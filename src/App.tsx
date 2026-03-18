@@ -670,6 +670,42 @@ function AppContent() {
         for (const pkg of packagesToSave) {
           const pkgRef = doc(collection(storyRef, 'packages'));
           
+          // Ensure carousel has exactly 4 slides
+          if (pkg.carousel && pkg.carousel.slides) {
+            if (pkg.carousel.slides.length < 4) {
+              console.warn("AI returned fewer than 4 slides for carousel. Padding to 4.");
+              while (pkg.carousel.slides.length < 4) {
+                const nextNum = pkg.carousel.slides.length + 1;
+                pkg.carousel.slides.push({
+                  slide_number: nextNum,
+                  text: nextNum === 4 ? "• Key Fact 1\n• Key Fact 2\n• Key Fact 3\n\nSource: [Source Name]\n\nSunny Signals, your source for good news worldwide." : "Slide text pending...",
+                  visual_prompt: nextNum === 4 ? "A clean, modern infographic background with subtle textures, professional news layout." : "A high-quality cinematic image prompt.",
+                  prompt_variations: ["Variation 1", "Variation 2", "Variation 3"]
+                });
+              }
+            } else if (pkg.carousel.slides.length > 4) {
+              pkg.carousel.slides = pkg.carousel.slides.slice(0, 4);
+            }
+          }
+
+          // Ensure reel has exactly 5 shots
+          if (pkg.reel && pkg.reel.shots) {
+            if (pkg.reel.shots.length < 5) {
+              console.warn("AI returned fewer than 5 shots for reel. Padding to 5.");
+              while (pkg.reel.shots.length < 5) {
+                const nextNum = pkg.reel.shots.length + 1;
+                pkg.reel.shots.push({
+                  shot_number: nextNum,
+                  image_prompt: nextNum === 5 ? "Typography slide prompt" : "Cinematic prompt",
+                  script: nextNum === 5 ? "• Fact 1\n• Fact 2\nSource: [Source]\nSunny Signals Worldwide - The bright side of news" : "Narration script...",
+                  prompt_variations: ["Variation 1", "Variation 2", "Variation 3"]
+                });
+              }
+            } else if (pkg.reel.shots.length > 5) {
+              pkg.reel.shots = pkg.reel.shots.slice(0, 5);
+            }
+          }
+
           // Ensure prompt_variations are handled if present
           const carousel = pkg.carousel ? {
             ...pkg.carousel,
@@ -833,7 +869,14 @@ function AppContent() {
       const batch = writeBatch(db);
       packagesSnap.forEach(d => batch.delete(d.ref));
       await batch.commit();
-      handleSelectStory(selectedStory.docId, false);
+      
+      // Clear local state immediately to avoid stale data
+      setSelectedStory(prev => prev ? { 
+        ...prev, 
+        packages: (prev.packages || []).filter(p => p.platform !== platform) 
+      } : null);
+      
+      await handleSelectStory(selectedStory.docId, false);
     } catch (error) {
       console.error("Failed to clear packages", error);
     } finally {

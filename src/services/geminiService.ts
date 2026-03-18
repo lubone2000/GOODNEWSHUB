@@ -379,20 +379,20 @@ export const geminiService = {
         ${customInstruction ? `STEERING INSTRUCTION: ${customInstruction}` : ""}
         
         REQUIRED OUTPUTS:
-        1. Image Carousel (4 Slides):
+        1. Image Carousel (EXACTLY 4 Slides):
            - Slides 1-3: Narrative arc with clear text overlay and detailed visual prompts.
            - Slide 4 (MANDATORY): A "Facts & Sources" summary slide.
-             - Text: A punchy summary of the key verified facts from the story.
+             - Text: MUST be a bulleted list of the key verified facts from the story. Use "•" for bullets.
              - Visual Prompt: "A clean, modern infographic background with subtle textures, professional news layout."
            - For each slide, provide 3 variations of the visual prompt (different styles/angles).
-        2. 20-Second Reel (5 Shots, 4s each):
+        2. 20-Second Reel (EXACTLY 5 Shots, 4s each):
            - A cohesive narrative.
            - Shots 1-4: Detailed cinematic visual prompts and short narration scripts.
            - For each shot, provide 3 variations of the visual prompt.
            - Shot 5 (MANDATORY): A "Typography/Facts" slide. 
              - Visual Prompt: "A professional graphic design typography slide, clean background, modern layout for news facts."
              - Script: Must include:
-               1. Very short bulleted facts from the story.
+               1. A bulleted list of very short facts from the story.
                2. Source attribution (e.g., "Source: ${story.region} news").
                3. Channel Brand: "Sunny Signals Worldwide - The bright side of news".
         3. Hashtags:
@@ -402,8 +402,8 @@ export const geminiService = {
         - If the Brand Tone is "Documentary", the scripts should be observational, grounded, and authentic. 
         - Avoid overly dramatic or "marketing" language. 
         - Focus on the human or environmental impact.
-        - Ensure Slide 4 of the carousel is strictly a facts and source summary, ending with "Sunny Signals, your source for good news worldwide."
-        - Ensure Shot 5 of the reel is strictly a data/fact summary slide.
+        - Ensure Slide 4 of the carousel is strictly a bulleted facts and source summary, ending with "Sunny Signals, your source for good news worldwide."
+        - Ensure Shot 5 of the reel is strictly a bulleted data/fact summary slide.
 
         Return ONLY a valid JSON object with:
         {
@@ -412,20 +412,20 @@ export const geminiService = {
           "hashtags": ["#tag1", "#tag2"],
           "carousel": {
             "slides": [
-              { "slide_number": 1, "text": "Slide text", "visual_prompt": "Detailed image prompt" },
-              { "slide_number": 2, "text": "Slide text", "visual_prompt": "Detailed image prompt" },
-              { "slide_number": 3, "text": "Slide text", "visual_prompt": "Detailed image prompt" },
-              { "slide_number": 4, "text": "Punchy facts summary + Source: [Source Name] + Sunny Signals, your source for good news worldwide.", "visual_prompt": "Infographic style prompt" }
+              { "slide_number": 1, "text": "Slide text", "visual_prompt": "Detailed image prompt", "prompt_variations": ["v1", "v2", "v3"] },
+              { "slide_number": 2, "text": "Slide text", "visual_prompt": "Detailed image prompt", "prompt_variations": ["v1", "v2", "v3"] },
+              { "slide_number": 3, "text": "Slide text", "visual_prompt": "Detailed image prompt", "prompt_variations": ["v1", "v2", "v3"] },
+              { "slide_number": 4, "text": "• Fact 1\n• Fact 2\n• Fact 3\n\nSource: [Source Name]\n\nSunny Signals, your source for good news worldwide.", "visual_prompt": "Infographic style prompt", "prompt_variations": ["v1", "v2", "v3"] }
             ]
           },
           "reel": {
             "story_text": "Full narrative text including the final facts summary",
             "shots": [
-              { "shot_number": 1, "image_prompt": "Cinematic prompt", "script": "Narration" },
-              { "shot_number": 2, "image_prompt": "Cinematic prompt", "script": "Narration" },
-              { "shot_number": 3, "image_prompt": "Cinematic prompt", "script": "Narration" },
-              { "shot_number": 4, "image_prompt": "Cinematic prompt", "script": "Narration" },
-              { "shot_number": 5, "image_prompt": "Typography slide prompt", "script": "Facts summary + Source + Sunny Signals Worldwide - The bright side of news" }
+              { "shot_number": 1, "image_prompt": "Cinematic prompt", "script": "Narration", "prompt_variations": ["v1", "v2", "v3"] },
+              { "shot_number": 2, "image_prompt": "Cinematic prompt", "script": "Narration", "prompt_variations": ["v1", "v2", "v3"] },
+              { "shot_number": 3, "image_prompt": "Cinematic prompt", "script": "Narration", "prompt_variations": ["v1", "v2", "v3"] },
+              { "shot_number": 4, "image_prompt": "Cinematic prompt", "script": "Narration", "prompt_variations": ["v1", "v2", "v3"] },
+              { "shot_number": 5, "image_prompt": "Typography slide prompt", "script": "• Fact 1\n• Fact 2\nSource: [Source]\nSunny Signals Worldwide - The bright side of news", "prompt_variations": ["v1", "v2", "v3"] }
             ]
           }
         }`,

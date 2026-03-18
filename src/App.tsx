@@ -139,7 +139,7 @@ function AppContent() {
   const [selectedStoryId, setSelectedStoryId] = useState<string | null>(null);
   const [selectedStory, setSelectedStory] = useState<any>(null);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'feed' | 'saved' | 'detail' | 'studio' | 'visual' | 'export' | 'brand'>('feed');
+  const [activeTab, setActiveTab] = useState<'feed' | 'verified' | 'saved' | 'detail' | 'studio' | 'visual' | 'export' | 'brand'>('feed');
   const [searchQuery, setSearchQuery] = useState('Sustainability and Innovation');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
@@ -271,6 +271,11 @@ function AppContent() {
   const filteredStories = stories.filter(s => {
     const categoryMatch = !selectedCategory || s.category === selectedCategory;
     const regionMatch = !selectedRegion || (s.region && s.region.toLowerCase().includes(selectedRegion.toLowerCase()));
+    
+    if (activeTab === 'feed') return categoryMatch && regionMatch && s.status === 'pending';
+    if (activeTab === 'verified') return categoryMatch && regionMatch && s.status === 'verified';
+    if (activeTab === 'saved') return categoryMatch && regionMatch && s.is_saved;
+    
     return categoryMatch && regionMatch;
   });
 
@@ -382,6 +387,15 @@ function AppContent() {
     }
   };
 
+  const isSimilar = (t1: string, t2: string) => {
+    const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const n1 = normalize(t1);
+    const n2 = normalize(t2);
+    if (n1 === n2) return true;
+    if (n1.includes(n2) || n2.includes(n1)) return true;
+    return false;
+  };
+
   const handleDiscover = async (queryOverride?: any) => {
     if (!user) return;
     setLoading(true);
@@ -396,7 +410,15 @@ function AppContent() {
         await trackUsage(0.001); // Estimated cost for discovery
         const batch = writeBatch(db);
         
+        let addedCount = 0;
         for (const story of newStories) {
+          // Client-side duplicate check as a second layer
+          const isDuplicate = stories.some(s => isSimilar(s.title, story.title));
+          if (isDuplicate) {
+            console.log("Skipping duplicate story:", story.title);
+            continue;
+          }
+
           const storyRef = doc(collection(db, 'stories'));
           batch.set(storyRef, {
             ...story,
@@ -406,6 +428,7 @@ function AppContent() {
             is_saved: false,
             created_at: serverTimestamp()
           });
+          addedCount++;
 
           // Add sources as subcollection
           if (story.sources) {
@@ -415,7 +438,12 @@ function AppContent() {
             }
           }
         }
-        await batch.commit();
+        
+        if (addedCount > 0) {
+          await batch.commit();
+        } else {
+          alert("No new unique stories found. Try a different topic!");
+        }
       } else {
         alert(`No new stories found for "${fullQuery}". Try a more specific topic or one of the Content Pillars!`);
       }
@@ -549,6 +577,7 @@ function AppContent() {
       await batch.commit();
       await handleSelectStory(selectedStory.docId, false);
       setAiStatus('connected');
+      setActiveTab('verified');
     } catch (error) {
       console.error("Verification failed", error);
       setAiStatus('error');
@@ -1076,6 +1105,7 @@ function AppContent() {
         </div>
         <div className="flex flex-col space-y-6">
           <NavIcon icon={<LayoutDashboard size={24} />} active={activeTab === 'feed'} onClick={() => setActiveTab('feed')} label="Feed" />
+          <NavIcon icon={<ShieldCheck size={24} />} active={activeTab === 'verified'} onClick={() => setActiveTab('verified')} label="Verified" />
           <NavIcon icon={<Bookmark size={24} />} active={activeTab === 'saved'} onClick={() => setActiveTab('saved')} label="Saved" />
           <NavIcon icon={<FileText size={24} />} active={activeTab === 'detail'} onClick={() => setActiveTab('detail')} disabled={!selectedStoryId} label="Detail" />
           <NavIcon icon={<Plus size={24} />} active={activeTab === 'studio'} onClick={() => setActiveTab('studio')} disabled={!selectedStoryId} label="Studio" />
@@ -1090,6 +1120,7 @@ function AppContent() {
         <header className="h-20 border-b border-[#141414]/10 bg-white/80 backdrop-blur-md flex items-center justify-between px-8 sticky top-0 z-40">
           <h1 className="text-xl font-medium italic serif">
             {activeTab === 'feed' && "Today's Good News Feed"}
+            {activeTab === 'verified' && "Verified Evidence Hub"}
             {activeTab === 'saved' && "Saved Stories"}
             {activeTab === 'detail' && "Evidence Hub"}
             {activeTab === 'studio' && "Content Studio"}
@@ -1250,7 +1281,7 @@ function AppContent() {
                 {filteredStories.length === 0 && !loading && (
                   <div className="col-span-full py-32 text-center space-y-6">
                     <div className="w-16 h-16 bg-[#141414]/5 rounded-full flex items-center justify-center mx-auto">
-                      <Search size={32} className="opacity-20" />
+                      <Zap size={32} className="opacity-20" />
                     </div>
                     <div className="space-y-2">
                       <p className="text-xl font-serif italic opacity-60">Your newsroom is currently empty.</p>
@@ -1269,15 +1300,15 @@ function AppContent() {
               </motion.div>
             )}
 
-            {activeTab === 'saved' && (
+            {activeTab === 'verified' && (
               <motion.div 
-                key="saved"
+                key="verified"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
                 className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
               >
-                {stories.filter(s => s.is_saved).map((story: Story) => (
+                {filteredStories.map((story: Story) => (
                   <StoryCard 
                     key={story.docId || story.id} 
                     story={story} 
@@ -1287,7 +1318,41 @@ function AppContent() {
                     active={selectedStoryId === (story.docId || story.id)}
                   />
                 ))}
-                {stories.filter(s => s.is_saved).length === 0 && (
+                {filteredStories.length === 0 && (
+                  <div className="col-span-full py-32 text-center space-y-6">
+                    <div className="w-16 h-16 bg-[#141414]/5 rounded-full flex items-center justify-center mx-auto">
+                      <ShieldCheck size={32} className="opacity-20" />
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-xl font-serif italic opacity-60">No verified stories yet.</p>
+                      <p className="text-sm opacity-40 max-w-xs mx-auto leading-relaxed">
+                        Select a story from your feed and run the <span className="font-bold">Deep Verification</span> agent to move it here.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </motion.div>
+            )}
+
+            {activeTab === 'saved' && (
+              <motion.div 
+                key="saved"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+              >
+                {filteredStories.map((story: Story) => (
+                  <StoryCard 
+                    key={story.docId || story.id} 
+                    story={story} 
+                    onClick={() => { handleSelectStory(story.docId || story.id); }}
+                    onSave={(e: any) => { e.stopPropagation(); handleSave(story.docId || story.id, !!story.is_saved); }}
+                    onDelete={(e: any) => { e.stopPropagation(); handleDeleteStory(story.docId || story.id); }}
+                    active={selectedStoryId === (story.docId || story.id)}
+                  />
+                ))}
+                {filteredStories.length === 0 && (
                   <div className="col-span-full py-32 text-center space-y-6">
                     <div className="w-16 h-16 bg-[#141414]/5 rounded-full flex items-center justify-center mx-auto">
                       <Bookmark size={32} className="opacity-20" />
@@ -1340,10 +1405,10 @@ function AppContent() {
                     <button 
                       onClick={handleVerify}
                       disabled={loading}
-                      className="flex items-center space-x-2 px-6 py-3 bg-[#141414] text-white rounded-full hover:bg-opacity-90 transition-all disabled:opacity-50"
+                      className={`flex items-center space-x-2 px-6 py-3 rounded-full border transition-all disabled:opacity-50 ${selectedStory.status === 'verified' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-[#141414] text-white hover:bg-opacity-90'}`}
                     >
                       <ShieldCheck size={20} />
-                      <span>{loading ? 'Verifying...' : 'Run Verification Agent'}</span>
+                      <span>{loading ? 'Verifying...' : selectedStory.status === 'verified' ? 'Re-verify Story' : 'Run Verification Agent'}</span>
                     </button>
                     <button 
                       onClick={() => handleSave(selectedStory.docId, !!selectedStory.is_saved)}
@@ -1479,10 +1544,11 @@ function AppContent() {
                                 >
                                   <div className="w-full aspect-square bg-[#F5F5F0] flex items-center justify-center relative">
                                     <img 
-                                      src={`/api/proxy-image?url=${encodeURIComponent(img.url)}`} 
+                                      src={img.url.startsWith('http') ? `/api/proxy-image?url=${encodeURIComponent(img.url)}` : img.url} 
                                       alt={img.title} 
                                       className="w-full h-full object-cover"
                                       referrerPolicy="no-referrer"
+                                      crossOrigin="anonymous"
                                       onError={(e) => {
                                         const target = e.target as HTMLImageElement;
                                         // If proxy fails, try direct as a last resort
@@ -1491,6 +1557,7 @@ function AppContent() {
                                           target.src = img.url;
                                           return;
                                         }
+                                        // If direct also fails, try a different proxy or just hide
                                         target.style.display = 'none';
                                         const parent = target.parentElement;
                                         if (parent) {

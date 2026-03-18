@@ -60,7 +60,8 @@ export const geminiService = {
       const selectedFocus = focusModes[Math.floor(Math.random() * focusModes.length)];
 
       const avoidPrompt = existingTitles.length > 0 
-        ? `\n\nCRITICAL: DO NOT include stories that are the same as or very similar to these existing titles (Recent Stories): ${existingTitles.slice(0, 100).join(", ")}`
+        ? `\n\nCRITICAL: DO NOT include stories that are the same as or very similar to these existing titles (Recent Stories). Even if the angle is slightly different, if it's the same event or breakthrough, skip it. 
+        Existing Titles to Avoid: ${existingTitles.slice(0, 100).join(", ")}`
         : "";
 
       const response = await getAi().models.generateContent({
@@ -175,7 +176,7 @@ export const geminiService = {
       );
 
       const aiPromise = getAi().models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-3.1-pro-preview",
         contents: `You are a Senior Fact-Checking & Editorial Agent. Your task is to verify the following news story and provide a structured assessment.
 
         STORY TO VERIFY:
@@ -195,6 +196,8 @@ export const geminiService = {
            - If you find an image on a news site, try to extract the actual image source URL from the <img> tag.
            - If you cannot find a direct image URL, DO NOT include it in the 'fact_images' array. It is better to have 0 images than broken links.
            - High-authority sources like Wikipedia, Wikimedia Commons, or official organization media kits are preferred.
+           - SEARCH TIP: Search for "[Story Topic] photo" or "[Story Topic] press release image" to find direct links.
+           - Verify the URL is a direct image link before including it.
         4. SCORE: Provide a verification score (0-100) and editorial scores (1-10).
         5. PROOF ASSETS: Create short "Claim Cards" (max 60 chars) and "Source Badges" (e.g., "Peer Reviewed").
 

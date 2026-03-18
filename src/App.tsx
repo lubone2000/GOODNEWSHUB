@@ -120,6 +120,7 @@ const CATEGORY_COLORS: Record<string, { bg: string, text: string, border: string
   'Accessibility Progress': { bg: 'bg-teal-50', text: 'text-teal-700', border: 'border-teal-200' },
   'Evergreen Facts': { bg: 'bg-violet-50', text: 'text-violet-700', border: 'border-violet-200' },
   'Historical Wins': { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200' },
+  'Little Wins': { bg: 'bg-pink-50', text: 'text-pink-700', border: 'border-pink-200' },
   'Default': { bg: 'bg-gray-50', text: 'text-gray-700', border: 'border-gray-200' }
 };
 

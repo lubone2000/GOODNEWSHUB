@@ -105,7 +105,7 @@ export const geminiService = {
         - id: slug
         - title: engaging, hook-style title
         - summary: concise, punchy summary
-        - category: MUST be exactly one of: "Health Wins", "Climate Progress", "Wildlife Recovery", "Science Breakthroughs", "Tech Helping People", "Local Community Wins", "Education Improvements", "Accessibility Progress", "Evergreen Facts", "Historical Wins"
+        - category: MUST be exactly one of: "Health Wins", "Climate Progress", "Wildlife Recovery", "Science Breakthroughs", "Tech Helping People", "Local Community Wins", "Education Improvements", "Accessibility Progress", "Evergreen Facts", "Historical Wins", "Little Wins"
         - region: specific location or "Global"
         - sources: array of {url, title}
         - engagement_score: 1-10 (predicted social performance)

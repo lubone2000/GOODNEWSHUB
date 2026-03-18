@@ -425,6 +425,7 @@ function AppContent() {
             uid: user.uid,
             status: 'pending',
             verified_score: 0,
+            source_count: story.sources?.length || 0,
             is_saved: false,
             created_at: serverTimestamp()
           });
@@ -554,18 +555,40 @@ function AppContent() {
       const storyRef = doc(db, 'stories', selectedStory.docId);
       const batch = writeBatch(db);
       
+      const currentSources = selectedStory.sources || [];
+      const newSources = verification.new_sources || [];
+      const totalSourcesCount = currentSources.length + newSources.length;
+
+      console.log("Updating story with verification data:", {
+        score: verification.score,
+        claims_count: verification.claims?.length,
+        new_sources_count: newSources.length,
+        total_sources: totalSourcesCount
+      });
+
       batch.update(storyRef, {
         verified_score: verification.score,
         editorial_scores: verification.editorial_scores,
         proof_assets: verification.proof_assets,
-        status: 'verified'
+        status: 'verified',
+        source_count: totalSourcesCount
       });
+
+      // Add new sources if any
+      for (const source of newSources) {
+        const sourceRef = doc(collection(storyRef, 'sources'));
+        batch.set(sourceRef, {
+          ...source,
+          created_at: serverTimestamp()
+        });
+      }
 
       // Clear old claims and add new ones
       const oldClaims = await getDocs(collection(storyRef, 'claims'));
+      console.log(`Deleting ${oldClaims.size} old claims`);
       oldClaims.forEach(d => batch.delete(d.ref));
 
-      for (const claim of verification.claims) {
+      for (const claim of (verification.claims || [])) {
         const claimRef = doc(collection(storyRef, 'claims'));
         batch.set(claimRef, {
           claim_text: claim.text,
@@ -574,7 +597,9 @@ function AppContent() {
         });
       }
 
+      console.log("Committing batch update...");
       await batch.commit();
+      console.log("Batch commit successful. Refreshing selected story...");
       await handleSelectStory(selectedStory.docId, false);
       setAiStatus('connected');
       setActiveTab('verified');
@@ -1105,8 +1130,8 @@ function AppContent() {
         </div>
         <div className="flex flex-col space-y-6">
           <NavIcon icon={<LayoutDashboard size={24} />} active={activeTab === 'feed'} onClick={() => setActiveTab('feed')} label="Feed" />
-          <NavIcon icon={<ShieldCheck size={24} />} active={activeTab === 'verified'} onClick={() => setActiveTab('verified')} label="Verified" />
           <NavIcon icon={<Bookmark size={24} />} active={activeTab === 'saved'} onClick={() => setActiveTab('saved')} label="Saved" />
+          <NavIcon icon={<ShieldCheck size={24} />} active={activeTab === 'verified'} onClick={() => setActiveTab('verified')} label="Verified" />
           <NavIcon icon={<FileText size={24} />} active={activeTab === 'detail'} onClick={() => setActiveTab('detail')} disabled={!selectedStoryId} label="Detail" />
           <NavIcon icon={<Plus size={24} />} active={activeTab === 'studio'} onClick={() => setActiveTab('studio')} disabled={!selectedStoryId} label="Studio" />
           <NavIcon icon={<ImageIcon size={24} />} active={activeTab === 'visual'} onClick={() => setActiveTab('visual')} disabled={!selectedStoryId} label="Visual" />

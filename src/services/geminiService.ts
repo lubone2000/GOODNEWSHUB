@@ -139,7 +139,7 @@ export const geminiService = {
                   }
                 }
               },
-              required: ["id", "title", "summary", "category", "region", "engagement_score", "visual_score"]
+              required: ["id", "title", "summary", "category", "region", "engagement_score", "visual_score", "sources"]
             }
           }
         }
@@ -221,6 +221,18 @@ export const geminiService = {
                   required: ["text", "status"]
                 }
               },
+              new_sources: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    title: { type: Type.STRING },
+                    url: { type: Type.STRING },
+                    snippet: { type: Type.STRING }
+                  },
+                  required: ["title", "url"]
+                }
+              },
               flags: {
                 type: Type.ARRAY,
                 items: { type: Type.STRING }
@@ -280,7 +292,11 @@ export const geminiService = {
       const cleaned = cleanJson(text);
       try {
         const data = JSON.parse(cleaned);
-        console.log("Verification successful for:", story.title);
+        console.log("Verification successful for:", story.title, data);
+        
+        // Ensure claims is always an array
+        if (!data.claims) data.claims = [];
+        if (!data.new_sources) data.new_sources = [];
         
         // Ensure editorial_scores has defaults to prevent UI issues
         if (!data.editorial_scores) {

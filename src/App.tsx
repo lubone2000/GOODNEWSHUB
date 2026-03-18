@@ -1026,6 +1026,16 @@ function AppContent() {
           <p className="text-[10px] font-bold uppercase tracking-widest opacity-40">Visual Prompt</p>
           <div className="flex space-x-2">
             <button 
+              onClick={() => {
+                navigator.clipboard.writeText(currentPrompt);
+                console.log("Prompt copied");
+              }}
+              className="text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-[#141414] transition-colors flex items-center"
+              title="Copy prompt"
+            >
+              <Copy size={10} className="mr-1" /> Copy
+            </button>
+            <button 
               onClick={() => setIsEditing(!isEditing)}
               className="text-[10px] font-bold uppercase tracking-widest text-indigo-600 hover:underline"
             >
@@ -2461,6 +2471,19 @@ function AppContent() {
                                 {shot.script}
                               </p>
                               <div className="space-y-1">
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-[8px] font-bold uppercase tracking-widest opacity-30">Visual Prompt</span>
+                                  <button 
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(reelPromptOverrides[idx] || shot.image_prompt);
+                                      console.log("Reel prompt copied");
+                                    }}
+                                    className="text-[8px] font-bold uppercase tracking-widest opacity-30 hover:opacity-100 flex items-center transition-all"
+                                    title="Copy prompt"
+                                  >
+                                    <Copy size={8} className="mr-1" /> Copy
+                                  </button>
+                                </div>
                                 <textarea
                                   value={reelPromptOverrides[idx] || shot.image_prompt}
                                   onChange={(e) => {

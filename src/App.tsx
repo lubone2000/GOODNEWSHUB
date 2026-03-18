@@ -753,6 +753,22 @@ function AppContent() {
     }
   };
 
+  const handleClearFeed = async () => {
+    if (!user || !confirm("Are you sure you want to clear your entire news feed? This will delete all discovered stories.")) return;
+    setLoading(true);
+    try {
+      const batch = writeBatch(db);
+      stories.forEach(s => batch.delete(doc(db, 'stories', s.docId)));
+      await batch.commit();
+      setStories([]);
+      setSelectedStory(null);
+    } catch (error) {
+      console.error("Failed to clear feed", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleClearPackages = async (platform: string) => {
     if (!selectedStory) return;
     setLoading(true);
@@ -1155,6 +1171,16 @@ function AppContent() {
                   >
                     {loading ? 'Searching...' : 'Discover'}
                   </button>
+                  {stories.length > 0 && (
+                    <button 
+                      onClick={handleClearFeed}
+                      disabled={loading}
+                      className="ml-4 p-2 text-[#141414]/40 hover:text-red-500 transition-colors"
+                      title="Clear Feed"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  )}
                 </div>
               </div>
             )}

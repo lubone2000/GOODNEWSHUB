@@ -60,10 +60,9 @@ export const geminiService = {
       const selectedFocus = focusModes[Math.floor(Math.random() * focusModes.length)];
 
       const avoidPrompt = existingTitles.length > 0 
-        ? `\n\nCRITICAL: DO NOT include stories that are the same as or very similar to these existing titles: ${existingTitles.slice(-50).join(", ")}`
+        ? `\n\nCRITICAL: DO NOT include stories that are the same as or very similar to these existing titles (Recent Stories): ${existingTitles.slice(0, 100).join(", ")}`
         : "";
 
-      console.log("Discovering news for query:", query);
       const response = await getAi().models.generateContent({
         model: "gemini-3-flash-preview",
         contents: `You are a world-class Engagement-Aware News & Fact Discovery Agent. Your goal is to find "Socially Potent" positive news stories and mind-blowing positive facts that are primed for high performance on TikTok and Instagram.
@@ -77,15 +76,16 @@ export const geminiService = {
 
         STAGE 1: WIDE DISCOVERY
         Scan for stories using these Query Families (Randomly prioritize different ones each time):
-        - BREAKTHROUGH: "first time", "record low/high", "historic win", "new solution", "successful trial".
-        - HUMAN IMPACT: "saved", "restored", "cured", "protected", "rebuilt", "recovered".
-        - HOPE/PROGRESS: "community success", "conservation success", "health gains", "decline in harm".
-        - SOCIALLY STICKY: "unbelievable but true", "what changed", "why this matters", "before/after".
+        - BREAKTHROUGH: "first time", "record low/high", "historic win", "new solution", "successful trial", "just announced".
+        - HUMAN IMPACT: "saved", "restored", "cured", "protected", "rebuilt", "recovered", "today".
+        - HOPE/PROGRESS: "community success", "conservation success", "health gains", "decline in harm", "latest update".
+        - SOCIALLY STICKY: "unbelievable but true", "what changed", "why this matters", "before/after", "breaking".
         - EVERGREEN/FACTS: "did you know", "mind-blowing fact", "humanity win", "planet progress", "nature secret".
 
         Integrate Trend Signals:
         - Look for rising topics on Google Trends, TikTok hashtags, and Instagram themes related to ${query || "global progress"}.
         - Normalize results from multi-language sources (English, German, Spanish, French, Portuguese, Japanese).
+        - PRIORITY: Find stories that happened in the LAST 24-72 HOURS.
 
         STAGE 2: STORY SHAPING + RANKING
         For each candidate, evaluate:

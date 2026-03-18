@@ -2002,7 +2002,7 @@ function AppContent() {
                                 <h4 className="text-[10px] font-bold uppercase tracking-widest opacity-40">Full Narrative</h4>
                                 <p className="text-sm font-serif italic opacity-90">{pkg.reel?.story_text}</p>
                               </div>
-                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                 {pkg.reel?.shots.map((shot: any, idx: number) => (
                                   <div key={idx} className="space-y-4">
                                     <div className="flex items-center justify-between">
@@ -2411,7 +2411,7 @@ function AppContent() {
                         </p>
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {reelPlan.shots.map((shot: any, idx: number) => (
                           <div key={idx} className="space-y-4">
                             <div className="flex items-center justify-between">

@@ -175,7 +175,7 @@ export const geminiService = {
       );
 
       const aiPromise = getAi().models.generateContent({
-        model: "gemini-3.1-pro-preview",
+        model: "gemini-3-flash-preview",
         contents: `You are a Senior Fact-Checking & Editorial Agent. Your task is to verify the following news story and provide a structured assessment.
 
         STORY TO VERIFY:
@@ -406,6 +406,7 @@ export const geminiService = {
           }
         }`,
         config: {
+          tools: [{ googleSearch: {} }],
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
@@ -517,6 +518,7 @@ export const geminiService = {
           ]
         }`,
         config: {
+          tools: [{ googleSearch: {} }],
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
@@ -725,6 +727,7 @@ export const geminiService = {
         
         Return ONLY a JSON array of strings.`,
         config: {
+          tools: [{ googleSearch: {} }],
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.ARRAY,

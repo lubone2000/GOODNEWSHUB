@@ -30,7 +30,8 @@ import {
   Maximize2,
   Palette,
   X,
-  Check
+  Check,
+  Copy
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { geminiService, klingService } from './services/geminiService';
@@ -155,17 +156,17 @@ function AppContent() {
   const [aiStatus, setAiStatus] = useState<'connected' | 'processing' | 'error'>('connected');
   const [isGenerating, setIsGenerating] = useState(false);
   const [reelPlan, setReelPlan] = useState<any>(null);
-  const [reelImages, setReelImages] = useState<(string | null)[]>([null, null, null, null]);
-  const [reelVideos, setReelVideos] = useState<(string | null)[]>([null, null, null, null]);
-  const [carouselImages, setCarouselImages] = useState<(string | null)[]>([null, null, null]);
-  const [carouselLoadingStates, setCarouselLoadingStates] = useState<boolean[]>([false, false, false]);
+  const [reelImages, setReelImages] = useState<(string | null)[]>([null, null, null, null, null]);
+  const [reelVideos, setReelVideos] = useState<(string | null)[]>([null, null, null, null, null]);
+  const [carouselImages, setCarouselImages] = useState<(string | null)[]>([null, null, null, null]);
+  const [carouselLoadingStates, setCarouselLoadingStates] = useState<boolean[]>([false, false, false, false]);
   const [isGeneratingReel, setIsGeneratingReel] = useState(false);
-  const [videoLoadingStates, setVideoLoadingStates] = useState<boolean[]>([false, false, false, false]);
-  const [imageLoadingStates, setImageLoadingStates] = useState<boolean[]>([false, false, false, false]);
+  const [videoLoadingStates, setVideoLoadingStates] = useState<boolean[]>([false, false, false, false, false]);
+  const [imageLoadingStates, setImageLoadingStates] = useState<boolean[]>([false, false, false, false, false]);
   const [customReelIdea, setCustomReelIdea] = useState<string>('');
   const [previewImage, setPreviewImage] = useState<string | null>(null);
-  const [reelPromptOverrides, setReelPromptOverrides] = useState<string[]>(['', '', '', '']);
-  const [reelVariationIndices, setReelVariationIndices] = useState<number[]>([0, 0, 0, 0]);
+  const [reelPromptOverrides, setReelPromptOverrides] = useState<string[]>(['', '', '', '', '']);
+  const [reelVariationIndices, setReelVariationIndices] = useState<number[]>([0, 0, 0, 0, 0]);
   const [activeReferenceImage, setActiveReferenceImage] = useState<string | null>(null);
   const [brandSettings, setBrandSettings] = useState<any>({
     primaryColor: '#141414',
@@ -876,8 +877,8 @@ function AppContent() {
     try {
       const plan = await geminiService.generateReelPlan(customReelIdea || selectedStory);
       setReelPlan(plan);
-      setReelImages([null, null, null, null]);
-      setReelVideos([null, null, null, null]);
+      setReelImages([null, null, null, null, null]);
+      setReelVideos([null, null, null, null, null]);
     } catch (error) {
       console.error("Failed to generate reel plan", error);
     } finally {
@@ -1904,14 +1905,24 @@ function AppContent() {
                             {/* Carousel Section */}
                             <div className="space-y-6">
                               <div className="flex items-center justify-between">
-                                <h3 className="text-lg font-serif italic">Image Carousel (3 Slides)</h3>
+                                <h3 className="text-lg font-serif italic">Image Carousel (4 Slides)</h3>
                                 <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">Educational Series</span>
                               </div>
-                              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                                 {pkg.carousel?.slides.map((slide: any, idx: number) => (
                                   <div key={idx} className="p-6 bg-[#F5F5F0] rounded-2xl border border-[#141414]/5 space-y-4">
                                     <div className="flex items-center justify-between">
                                       <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">Slide {slide.slide_number}</span>
+                                      <button 
+                                        onClick={() => {
+                                          navigator.clipboard.writeText(slide.text);
+                                          console.log("Slide text copied");
+                                        }}
+                                        className="text-[10px] font-bold uppercase tracking-widest opacity-40 hover:opacity-100 flex items-center transition-all active:scale-95"
+                                        title="Copy text"
+                                      >
+                                        <Copy size={10} className="mr-1" /> Copy
+                                      </button>
                                     </div>
                                     <p className="text-sm font-serif italic leading-relaxed text-[#141414]/80">
                                       {slide.text}
@@ -1931,18 +1942,18 @@ function AppContent() {
                             {/* Reel Section */}
                             <div className="space-y-6">
                               <div className="flex items-center justify-between">
-                                <h3 className="text-lg font-serif italic">20s Cinematic Reel (4 Shots)</h3>
+                                <h3 className="text-lg font-serif italic">20s Cinematic Reel (5 Shots)</h3>
                                 <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">Dramatic Narrative</span>
                               </div>
                               <div className="p-6 bg-[#141414] text-white rounded-2xl space-y-2">
                                 <h4 className="text-[10px] font-bold uppercase tracking-widest opacity-40">Full Narrative</h4>
                                 <p className="text-sm font-serif italic opacity-90">{pkg.reel?.story_text}</p>
                               </div>
-                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
                                 {pkg.reel?.shots.map((shot: any, idx: number) => (
                                   <div key={idx} className="space-y-4">
                                     <div className="flex items-center justify-between">
-                                      <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">Shot {shot.shot_number} (5s)</span>
+                                      <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">Shot {shot.shot_number} (4s)</span>
                                     </div>
                                     <div className="p-4 bg-[#F5F5F0] rounded-2xl border border-[#141414]/5 space-y-3">
                                       <p className="text-[10px] font-bold leading-tight text-[#141414]/80">{shot.script}</p>
@@ -2202,14 +2213,25 @@ function AppContent() {
                         </div>
                         <h3 className="text-2xl font-serif italic">Carousel Production Studio</h3>
                       </div>
-                      <p className="text-sm text-[#141414]/60">Generate high-quality visuals for your 3-slide Instagram carousel.</p>
+                      <p className="text-sm text-[#141414]/60">Generate high-quality visuals for your 4-slide Instagram carousel.</p>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
                       {selectedStory.packages?.find((p: any) => p.format === 'instagram_pack')?.carousel?.slides.map((slide: any, idx: number) => (
                         <div key={idx} className="space-y-4">
                           <div className="flex items-center justify-between">
                             <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">Slide {slide.slide_number}</span>
+                            <button 
+                              onClick={() => {
+                                navigator.clipboard.writeText(slide.text);
+                                // Use a more subtle way to show feedback if possible, but for now just console log or keep it simple
+                                console.log("Slide text copied to clipboard");
+                              }}
+                              className="text-[10px] font-bold uppercase tracking-widest opacity-40 hover:opacity-100 flex items-center transition-all active:scale-95"
+                              title="Copy to clipboard"
+                            >
+                              <Copy size={10} className="mr-1" /> Copy Text
+                            </button>
                           </div>
                           
                           <div className="aspect-square bg-[#F5F5F0] rounded-3xl overflow-hidden border border-[#141414]/5 relative group">
@@ -2293,7 +2315,7 @@ function AppContent() {
                         </div>
                         <h3 className="text-2xl font-serif italic">Reel Production Studio</h3>
                       </div>
-                      <p className="text-sm text-[#141414]/60">Break down your story into a 20-second cinematic reel (4 shots x 5s). Powered by Cinematic Video Engine.</p>
+                      <p className="text-sm text-[#141414]/60">Break down your story into a 20-second cinematic reel (5 shots x 4s). Powered by Cinematic Video Engine.</p>
                     </div>
                     <div className="flex flex-col md:flex-row items-center gap-4">
                       <input 
@@ -2336,11 +2358,11 @@ function AppContent() {
                         </p>
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
                         {reelPlan.shots.map((shot: any, idx: number) => (
                           <div key={idx} className="space-y-4">
                             <div className="flex items-center justify-between">
-                              <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">Shot {shot.shot_number} (5s)</span>
+                              <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">Shot {shot.shot_number} (4s)</span>
                             </div>
                             
                             <div className="aspect-[9/16] bg-[#F5F5F0] rounded-3xl overflow-hidden border border-[#141414]/5 relative group">

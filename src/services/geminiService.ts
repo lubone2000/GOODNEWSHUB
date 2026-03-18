@@ -379,8 +379,11 @@ export const geminiService = {
         ${customInstruction ? `STEERING INSTRUCTION: ${customInstruction}` : ""}
         
         REQUIRED OUTPUTS:
-        1. Image Carousel (3 Slides):
-           - Each slide needs a clear text overlay and a detailed visual prompt for image generation.
+        1. Image Carousel (4 Slides):
+           - Slides 1-3: Narrative arc with clear text overlay and detailed visual prompts.
+           - Slide 4 (MANDATORY): A "Facts & Sources" summary slide.
+             - Text: A punchy summary of the key verified facts from the story.
+             - Visual Prompt: "A clean, modern infographic background with subtle textures, professional news layout."
            - For each slide, provide 3 variations of the visual prompt (different styles/angles).
         2. 20-Second Reel (5 Shots, 4s each):
            - A cohesive narrative.
@@ -399,7 +402,8 @@ export const geminiService = {
         - If the Brand Tone is "Documentary", the scripts should be observational, grounded, and authentic. 
         - Avoid overly dramatic or "marketing" language. 
         - Focus on the human or environmental impact.
-        - Ensure Shot 5 is strictly a data/fact summary slide.
+        - Ensure Slide 4 of the carousel is strictly a facts and source summary, ending with "Sunny Signals, your source for good news worldwide."
+        - Ensure Shot 5 of the reel is strictly a data/fact summary slide.
 
         Return ONLY a valid JSON object with:
         {
@@ -410,7 +414,8 @@ export const geminiService = {
             "slides": [
               { "slide_number": 1, "text": "Slide text", "visual_prompt": "Detailed image prompt" },
               { "slide_number": 2, "text": "Slide text", "visual_prompt": "Detailed image prompt" },
-              { "slide_number": 3, "text": "Slide text", "visual_prompt": "Detailed image prompt" }
+              { "slide_number": 3, "text": "Slide text", "visual_prompt": "Detailed image prompt" },
+              { "slide_number": 4, "text": "Punchy facts summary + Source: [Source Name] + Sunny Signals, your source for good news worldwide.", "visual_prompt": "Infographic style prompt" }
             ]
           },
           "reel": {
@@ -519,21 +524,21 @@ export const geminiService = {
         
         ${context}
         
-        The reel must have 4 distinct shots, each lasting 5 seconds.
+        The reel must have 5 distinct shots, each lasting 4 seconds.
         For each shot, provide:
         1. A detailed visual prompt for image generation (cinematic, high-impact).
         2. A short narration script (1 sentence).
         
         Return ONLY a valid JSON object with:
         {
-          "story_text": "A cohesive 4-sentence story for the whole reel",
+          "story_text": "A cohesive 5-sentence story for the whole reel",
           "shots": [
             {
               "shot_number": 1,
               "image_prompt": "Detailed cinematic prompt...",
               "script": "Narration for this shot..."
             },
-            ... (exactly 4 shots)
+            ... (exactly 5 shots)
           ]
         }`,
         config: {

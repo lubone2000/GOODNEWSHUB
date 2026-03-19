@@ -392,18 +392,18 @@ export const geminiService = {
            - Shot 5 (MANDATORY): A "Typography/Facts" slide. 
              - Visual Prompt: "A professional graphic design typography slide, clean background, modern layout for news facts."
              - Script: Must include:
-               1. A bulleted list of very short facts from the story.
-               2. Source attribution (e.g., "Source: ${story.region} news").
-               3. Channel Brand: "Sunny Signals Worldwide - The bright side of news".
+               - A bulleted list of very short facts from the story (Use "•").
+               - Source attribution (e.g., "Source: ${story.region} news").
+               - Channel Brand: "Sunny Signals Worldwide - The bright side of news".
         3. Hashtags:
            - Provide a list of 5-10 suggested hashtags for Instagram and TikTok.
 
-        IMPORTANT: 
-        - If the Brand Tone is "Documentary", the scripts should be observational, grounded, and authentic. 
-        - Avoid overly dramatic or "marketing" language. 
-        - Focus on the human or environmental impact.
-        - Ensure Slide 4 of the carousel is strictly a bulleted facts and source summary, ending with "Sunny Signals, your source for good news worldwide."
-        - Ensure Shot 5 of the reel is strictly a bulleted data/fact summary slide.
+        CRITICAL: 
+        - Slide 4 of the carousel MUST be the summary slide.
+        - Shot 5 of the reel MUST be the summary shot.
+        - Use bullet points (•) for all summary content to ensure clarity.
+        - Do not exceed or fall short of these slide/shot counts.
+        - Ensure Slide 4 ends with "Sunny Signals, your source for good news worldwide."
 
         Return ONLY a valid JSON object with:
         {

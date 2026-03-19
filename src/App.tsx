@@ -140,7 +140,7 @@ function AppContent() {
   const [selectedStoryId, setSelectedStoryId] = useState<string | null>(null);
   const [selectedStory, setSelectedStory] = useState<any>(null);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'feed' | 'verified' | 'saved' | 'detail' | 'studio' | 'visual' | 'export' | 'brand'>('feed');
+  const [activeTab, setActiveTab] = useState<'feed' | 'verified' | 'saved' | 'detail' | 'studio' | 'visual' | 'export' | 'published'>('feed');
   const [searchQuery, setSearchQuery] = useState('Sustainability and Innovation');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
@@ -275,7 +275,8 @@ function AppContent() {
     
     if (activeTab === 'feed') return categoryMatch && regionMatch && s.status === 'pending';
     if (activeTab === 'verified') return categoryMatch && regionMatch && s.status === 'verified';
-    if (activeTab === 'saved') return categoryMatch && regionMatch && s.is_saved;
+    if (activeTab === 'saved') return categoryMatch && regionMatch && s.is_saved && s.status !== 'published';
+    if (activeTab === 'published') return categoryMatch && regionMatch && s.status === 'published';
     
     return categoryMatch && regionMatch;
   });
@@ -678,7 +679,7 @@ function AppContent() {
                 const nextNum = pkg.carousel.slides.length + 1;
                 pkg.carousel.slides.push({
                   slide_number: nextNum,
-                  text: nextNum === 4 ? "• Key Fact 1\n• Key Fact 2\n• Key Fact 3\n\nSource: [Source Name]\n\nSunny Signals, your source for good news worldwide." : "Slide text pending...",
+                  text: nextNum === 4 ? "• Key Fact 1: [Detail]\n• Key Fact 2: [Detail]\n• Key Fact 3: [Detail]\n\nSource: [Source Name]\n\nSunny Signals Worldwide - The bright side of news" : "Slide text pending...",
                   visual_prompt: nextNum === 4 ? "A clean, modern infographic background with subtle textures, professional news layout." : "A high-quality cinematic image prompt.",
                   prompt_variations: ["Variation 1", "Variation 2", "Variation 3"]
                 });
@@ -697,7 +698,7 @@ function AppContent() {
                 pkg.reel.shots.push({
                   shot_number: nextNum,
                   image_prompt: nextNum === 5 ? "Typography slide prompt" : "Cinematic prompt",
-                  script: nextNum === 5 ? "• Fact 1\n• Fact 2\nSource: [Source]\nSunny Signals Worldwide - The bright side of news" : "Narration script...",
+                  script: nextNum === 5 ? "• Fact 1: [Detail]\n• Fact 2: [Detail]\n\nSource: [Source]\nSunny Signals Worldwide - The bright side of news" : "Narration script...",
                   prompt_variations: ["Variation 1", "Variation 2", "Variation 3"]
                 });
               }
@@ -833,10 +834,18 @@ function AppContent() {
 
   const handlePublish = async () => {
     if (!selectedStory) return;
+    if (selectedStory.status === 'published') {
+      alert('This story is already published.');
+      return;
+    }
     setLoading(true);
     try {
-      await updateDoc(doc(db, 'stories', selectedStory.docId), { status: 'published' });
-      setSelectedStory({ ...selectedStory, status: 'published' });
+      await updateDoc(doc(db, 'stories', selectedStory.docId), { 
+        status: 'published',
+        published_at: new Date()
+      });
+      setSelectedStory({ ...selectedStory, status: 'published', published_at: new Date() });
+      alert('Story published successfully!');
     } catch (error) {
       console.error("Failed to publish story", error);
     } finally {
@@ -1189,7 +1198,7 @@ function AppContent() {
           <NavIcon icon={<FileText size={24} />} active={activeTab === 'detail'} onClick={() => setActiveTab('detail')} disabled={!selectedStoryId} label="Detail" />
           <NavIcon icon={<Plus size={24} />} active={activeTab === 'studio'} onClick={() => setActiveTab('studio')} disabled={!selectedStoryId} label="Studio" />
           <NavIcon icon={<ImageIcon size={24} />} active={activeTab === 'visual'} onClick={() => setActiveTab('visual')} disabled={!selectedStoryId} label="Visual" />
-          <NavIcon icon={<Palette size={24} />} active={activeTab === 'brand'} onClick={() => setActiveTab('brand')} label="Brand" />
+          <NavIcon icon={<CheckCircle2 size={24} />} active={activeTab === 'published'} onClick={() => setActiveTab('published')} label="Published" />
           <NavIcon icon={<Download size={24} />} active={activeTab === 'export'} onClick={() => setActiveTab('export')} disabled={!selectedStoryId} label="Export" />
         </div>
       </nav>
@@ -1204,7 +1213,7 @@ function AppContent() {
             {activeTab === 'detail' && "Evidence Hub"}
             {activeTab === 'studio' && "Content Studio"}
             {activeTab === 'visual' && "Visual Studio"}
-            {activeTab === 'brand' && "Brand Identity"}
+            {activeTab === 'published' && "Published Articles"}
             {activeTab === 'export' && "Export Center"}
           </h1>
           <div className="flex items-center space-x-6">
@@ -1347,16 +1356,20 @@ function AppContent() {
                 exit={{ opacity: 0, y: -20 }}
                 className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
               >
-                {filteredStories.map((story: Story) => (
-                  <StoryCard 
-                    key={story.docId || story.id} 
-                    story={story} 
-                    onClick={() => { handleSelectStory(story.docId || story.id); }}
-                    onSave={(e: any) => { e.stopPropagation(); handleSave(story.docId || story.id, !!story.is_saved); }}
-                    onDelete={(e: any) => { e.stopPropagation(); handleDeleteStory(story.docId || story.id); }}
-                    active={selectedStoryId === (story.docId || story.id)}
-                  />
-                ))}
+                {filteredStories.map((story: Story) => {
+                  const isAlreadyPublished = stories.some(s => s.status === 'published' && isSimilar(s.title, story.title) && s.docId !== (story.docId || story.id));
+                  return (
+                    <StoryCard 
+                      key={story.docId || story.id} 
+                      story={story} 
+                      onClick={() => { handleSelectStory(story.docId || story.id); }}
+                      onSave={(e: any) => { e.stopPropagation(); handleSave(story.docId || story.id, !!story.is_saved); }}
+                      onDelete={(e: any) => { e.stopPropagation(); handleDeleteStory(story.docId || story.id); }}
+                      active={selectedStoryId === (story.docId || story.id)}
+                      isAlreadyPublished={isAlreadyPublished}
+                    />
+                  );
+                })}
                 {filteredStories.length === 0 && !loading && (
                   <div className="col-span-full py-32 text-center space-y-6">
                     <div className="w-16 h-16 bg-[#141414]/5 rounded-full flex items-center justify-center mx-auto">
@@ -1387,16 +1400,20 @@ function AppContent() {
                 exit={{ opacity: 0, y: -20 }}
                 className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
               >
-                {filteredStories.map((story: Story) => (
-                  <StoryCard 
-                    key={story.docId || story.id} 
-                    story={story} 
-                    onClick={() => { handleSelectStory(story.docId || story.id); }}
-                    onSave={(e: any) => { e.stopPropagation(); handleSave(story.docId || story.id, !!story.is_saved); }}
-                    onDelete={(e: any) => { e.stopPropagation(); handleDeleteStory(story.docId || story.id); }}
-                    active={selectedStoryId === (story.docId || story.id)}
-                  />
-                ))}
+                {filteredStories.map((story: Story) => {
+                  const isAlreadyPublished = stories.some(s => s.status === 'published' && isSimilar(s.title, story.title) && s.docId !== (story.docId || story.id));
+                  return (
+                    <StoryCard 
+                      key={story.docId || story.id} 
+                      story={story} 
+                      onClick={() => { handleSelectStory(story.docId || story.id); }}
+                      onSave={(e: any) => { e.stopPropagation(); handleSave(story.docId || story.id, !!story.is_saved); }}
+                      onDelete={(e: any) => { e.stopPropagation(); handleDeleteStory(story.docId || story.id); }}
+                      active={selectedStoryId === (story.docId || story.id)}
+                      isAlreadyPublished={isAlreadyPublished}
+                    />
+                  );
+                })}
                 {filteredStories.length === 0 && (
                   <div className="col-span-full py-32 text-center space-y-6">
                     <div className="w-16 h-16 bg-[#141414]/5 rounded-full flex items-center justify-center mx-auto">
@@ -1421,16 +1438,20 @@ function AppContent() {
                 exit={{ opacity: 0, y: -20 }}
                 className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
               >
-                {filteredStories.map((story: Story) => (
-                  <StoryCard 
-                    key={story.docId || story.id} 
-                    story={story} 
-                    onClick={() => { handleSelectStory(story.docId || story.id); }}
-                    onSave={(e: any) => { e.stopPropagation(); handleSave(story.docId || story.id, !!story.is_saved); }}
-                    onDelete={(e: any) => { e.stopPropagation(); handleDeleteStory(story.docId || story.id); }}
-                    active={selectedStoryId === (story.docId || story.id)}
-                  />
-                ))}
+                {filteredStories.map((story: Story) => {
+                  const isAlreadyPublished = stories.some(s => s.status === 'published' && isSimilar(s.title, story.title) && s.docId !== (story.docId || story.id));
+                  return (
+                    <StoryCard 
+                      key={story.docId || story.id} 
+                      story={story} 
+                      onClick={() => { handleSelectStory(story.docId || story.id); }}
+                      onSave={(e: any) => { e.stopPropagation(); handleSave(story.docId || story.id, !!story.is_saved); }}
+                      onDelete={(e: any) => { e.stopPropagation(); handleDeleteStory(story.docId || story.id); }}
+                      active={selectedStoryId === (story.docId || story.id)}
+                      isAlreadyPublished={isAlreadyPublished}
+                    />
+                  );
+                })}
                 {filteredStories.length === 0 && (
                   <div className="col-span-full py-32 text-center space-y-6">
                     <div className="w-16 h-16 bg-[#141414]/5 rounded-full flex items-center justify-center mx-auto">
@@ -1440,6 +1461,44 @@ function AppContent() {
                       <p className="text-xl font-serif italic opacity-60">Your library is empty.</p>
                       <p className="text-sm opacity-40 max-w-xs mx-auto leading-relaxed">
                         Save stories from the feed to build your content pipeline.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </motion.div>
+            )}
+
+            {activeTab === 'published' && (
+              <motion.div 
+                key="published"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+              >
+                {filteredStories.map((story: Story) => {
+                  const isAlreadyPublished = stories.some(s => s.status === 'published' && isSimilar(s.title, story.title) && s.docId !== (story.docId || story.id));
+                  return (
+                    <StoryCard 
+                      key={story.docId || story.id} 
+                      story={story} 
+                      onClick={() => { handleSelectStory(story.docId || story.id); }}
+                      onSave={(e: any) => { e.stopPropagation(); handleSave(story.docId || story.id, !!story.is_saved); }}
+                      onDelete={(e: any) => { e.stopPropagation(); handleDeleteStory(story.docId || story.id); }}
+                      active={selectedStoryId === (story.docId || story.id)}
+                      isAlreadyPublished={isAlreadyPublished}
+                    />
+                  );
+                })}
+                {filteredStories.length === 0 && (
+                  <div className="col-span-full py-32 text-center space-y-6">
+                    <div className="w-16 h-16 bg-[#141414]/5 rounded-full flex items-center justify-center mx-auto">
+                      <CheckCircle2 size={32} className="opacity-20" />
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-xl font-serif italic opacity-60">No published articles yet.</p>
+                      <p className="text-sm opacity-40 max-w-xs mx-auto leading-relaxed">
+                        Once you publish a story from the Studio, it will appear here for your records.
                       </p>
                     </div>
                   </div>
@@ -2002,14 +2061,24 @@ function AppContent() {
                                 <h4 className="text-[10px] font-bold uppercase tracking-widest opacity-40">Full Narrative</h4>
                                 <p className="text-sm font-serif italic opacity-90">{pkg.reel?.story_text}</p>
                               </div>
-                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                 {pkg.reel?.shots.map((shot: any, idx: number) => (
                                   <div key={idx} className="space-y-4">
                                     <div className="flex items-center justify-between">
                                       <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">Shot {shot.shot_number} (4s)</span>
+                                      <button 
+                                        onClick={() => {
+                                          navigator.clipboard.writeText(shot.script);
+                                          alert('Shot script copied!');
+                                        }}
+                                        className="text-[10px] font-bold uppercase tracking-widest opacity-40 hover:opacity-100 flex items-center transition-all"
+                                        title="Copy script"
+                                      >
+                                        <Copy size={10} className="mr-1" /> Copy Script
+                                      </button>
                                     </div>
-                                    <div className="p-4 bg-[#F5F5F0] rounded-2xl border border-[#141414]/5 space-y-3">
-                                      <p className="text-[10px] font-bold leading-tight text-[#141414]/80">{shot.script}</p>
+                                    <div className="p-6 bg-[#F5F5F0] rounded-3xl border border-[#141414]/5 space-y-4">
+                                      <p className="text-sm font-bold leading-relaxed text-[#141414]/80 whitespace-pre-wrap">{shot.script}</p>
                                       <PromptEditor 
                                         packageDocId={pkg.docId}
                                         type="reel"
@@ -2658,158 +2727,6 @@ function AppContent() {
                 </div>
               </motion.div>
             )}
-
-            {activeTab === 'brand' && brandDraft && (
-              <motion.div 
-                key="brand"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                className="max-w-4xl mx-auto space-y-12 pb-20"
-              >
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-                  <div className="space-y-8">
-                    <div className="flex items-center justify-between">
-                      <div className="space-y-2">
-                        <h2 className="text-3xl font-serif italic">Brand Identity</h2>
-                        <p className="text-[#141414]/60 text-sm">Define your channel's visual and tonal DNA. These rules guide the AI in every generation.</p>
-                      </div>
-                      <div className="flex items-center space-x-4">
-                        {isSavingBrand && (
-                          <motion.div 
-                            initial={{ opacity: 0, x: 20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            className="flex items-center space-x-2 px-3 py-1 bg-emerald-50 text-emerald-600 rounded-full border border-emerald-100"
-                          >
-                            <ShieldCheck className="w-3 h-3" />
-                            <span className="text-[10px] font-bold uppercase tracking-widest">Saved</span>
-                          </motion.div>
-                        )}
-                        <button
-                          onClick={handleUpdateBrand}
-                          disabled={isSavingBrand}
-                          className="px-6 py-2 bg-[#141414] text-white rounded-full text-[10px] font-bold uppercase tracking-widest hover:bg-[#141414]/80 transition-all disabled:opacity-50"
-                        >
-                          {isSavingBrand ? 'Saving...' : 'Save Changes'}
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="space-y-6">
-                      <div className="space-y-4">
-                        <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Visual Language</label>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <p className="text-[10px] opacity-60">Primary Color</p>
-                            <div className="flex items-center space-x-2">
-                              <input 
-                                type="color" 
-                                value={brandDraft.primaryColor}
-                                onChange={(e) => setBrandDraft({...brandDraft, primaryColor: e.target.value})}
-                                className="w-10 h-10 rounded-lg cursor-pointer border-none"
-                              />
-                              <span className="text-[10px] font-mono">{brandDraft.primaryColor}</span>
-                            </div>
-                          </div>
-                          <div className="space-y-2">
-                            <p className="text-[10px] opacity-60">Secondary Color</p>
-                            <div className="flex items-center space-x-2">
-                              <input 
-                                type="color" 
-                                value={brandDraft.secondaryColor}
-                                onChange={(e) => setBrandDraft({...brandDraft, secondaryColor: e.target.value})}
-                                className="w-10 h-10 rounded-lg cursor-pointer border-none"
-                              />
-                              <span className="text-[10px] font-mono">{brandDraft.secondaryColor}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Typography</label>
-                        <select 
-                          value={brandDraft.fontFamily}
-                          onChange={(e) => setBrandDraft({...brandDraft, fontFamily: e.target.value})}
-                          className="w-full px-4 py-3 bg-white rounded-xl border border-[#141414]/10 text-xs outline-none focus:border-[#141414]/40 transition-all"
-                        >
-                          <option value="Inter">Inter (Modern Sans)</option>
-                          <option value="Playfair Display">Playfair Display (Elegant Serif)</option>
-                          <option value="Space Grotesk">Space Grotesk (Tech/Modern)</option>
-                          <option value="JetBrains Mono">JetBrains Mono (Technical)</option>
-                        </select>
-                      </div>
-
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Visual Style</label>
-                        <select 
-                          value={brandDraft.visualStyle}
-                          onChange={(e) => setBrandDraft({...brandDraft, visualStyle: e.target.value})}
-                          className="w-full px-4 py-3 bg-white rounded-xl border border-[#141414]/10 text-xs outline-none focus:border-[#141414]/40 transition-all"
-                        >
-                          <option value="Cinematic">Cinematic (Film Look)</option>
-                          <option value="Minimalist">Minimalist (Clean/Simple)</option>
-                          <option value="Vibrant">Vibrant (High Saturation)</option>
-                          <option value="Documentary">Documentary (Raw/Real)</option>
-                          <option value="Artistic">Artistic (Stylized)</option>
-                        </select>
-                      </div>
-
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Tone of Voice</label>
-                        <input 
-                          type="text"
-                          value={brandDraft.toneOfVoice}
-                          onChange={(e) => setBrandDraft({...brandDraft, toneOfVoice: e.target.value})}
-                          placeholder="e.g. Hopeful, Professional, Energetic"
-                          className="w-full px-4 py-3 bg-white rounded-xl border border-[#141414]/10 text-xs outline-none focus:border-[#141414]/40 transition-all"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-8">
-                    <div className="p-8 bg-white rounded-[2rem] border border-[#141414]/5 shadow-sm space-y-6">
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Style Modifier (AI Prompting)</label>
-                        <textarea 
-                          value={brandDraft.styleModifier}
-                          onChange={(e) => setBrandDraft({...brandDraft, styleModifier: e.target.value})}
-                          placeholder="Add specific keywords to every image prompt..."
-                          rows={3}
-                          className="w-full px-4 py-3 bg-[#F5F5F0] rounded-xl border border-[#141414]/10 text-xs outline-none focus:border-[#141414]/40 transition-all resize-none"
-                        />
-                        <p className="text-[8px] opacity-40">Example: "8k resolution, photorealistic, soft bokeh, warm lighting"</p>
-                      </div>
-
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Negative Prompt (Avoid these)</label>
-                        <textarea 
-                          value={brandDraft.negativePrompt}
-                          onChange={(e) => setBrandDraft({...brandDraft, negativePrompt: e.target.value})}
-                          placeholder="What should the AI NEVER generate?"
-                          rows={3}
-                          className="w-full px-4 py-3 bg-[#F5F5F0] rounded-xl border border-[#141414]/10 text-xs outline-none focus:border-[#141414]/40 transition-all resize-none"
-                        />
-                        <p className="text-[8px] opacity-40">Example: "cartoon, low quality, text, logos, distorted faces"</p>
-                      </div>
-                    </div>
-
-                    <div className="p-8 bg-[#141414] text-white rounded-[2rem] space-y-4">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center">
-                          <Zap size={16} className="text-amber-400" />
-                        </div>
-                        <h4 className="text-sm font-bold">CI Rules Active</h4>
-                      </div>
-                      <p className="text-[10px] text-white/60 leading-relaxed">
-                        Your Brand Identity settings are automatically injected into every AI request. This ensures that even when generating new content, the visual language remains coherent with your channel's DNA.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </motion.div>
-            )}
           </AnimatePresence>
         </div>
       </main>
@@ -2854,15 +2771,20 @@ function NavIcon({ icon, active, onClick, disabled, label }: { icon: React.React
   );
 }
 
-function StoryCard({ story, onClick, onSave, onDelete, active }: any) {
+function StoryCard({ story, onClick, onSave, onDelete, active, isAlreadyPublished }: any) {
   const color = CATEGORY_COLORS[story.category] || CATEGORY_COLORS['Default'];
   
   return (
     <motion.div 
       whileHover={{ y: -4 }}
       onClick={onClick}
-      className={`bg-white p-6 rounded-3xl border transition-all cursor-pointer group relative ${active ? 'border-[#141414] shadow-lg' : 'border-[#141414]/5 shadow-sm hover:border-[#141414]/20'}`}
+      className={`bg-white p-6 rounded-3xl border transition-all cursor-pointer group relative ${active ? 'border-[#141414] shadow-lg' : 'border-[#141414]/5 shadow-sm hover:border-[#141414]/20'} ${isAlreadyPublished ? 'bg-rose-50/30 border-rose-200' : ''}`}
     >
+      {isAlreadyPublished && (
+        <div className="absolute -top-2 -right-2 bg-rose-500 text-white text-[8px] font-bold uppercase tracking-widest px-2 py-1 rounded-full shadow-lg z-20 flex items-center">
+          <AlertCircle size={10} className="mr-1" /> Potential Duplicate
+        </div>
+      )}
       <div className="absolute top-6 right-6 flex items-center space-x-2 z-10">
         <button 
           onClick={onDelete}
@@ -2889,6 +2811,11 @@ function StoryCard({ story, onClick, onSave, onDelete, active }: any) {
             {story.status === 'verified' && (
               <span className="px-2 py-0.5 rounded bg-emerald-500 text-white text-[10px] font-bold uppercase tracking-widest flex items-center shadow-[0_0_10px_rgba(16,185,129,0.3)]">
                 <ShieldCheck size={10} className="mr-1" /> Verified
+              </span>
+            )}
+            {story.status === 'published' && (
+              <span className="px-2 py-0.5 rounded bg-blue-500 text-white text-[10px] font-bold uppercase tracking-widest flex items-center shadow-[0_0_10px_rgba(59,130,246,0.3)]">
+                <Check size={10} className="mr-1" /> Published
               </span>
             )}
           </div>

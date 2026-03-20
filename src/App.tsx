@@ -832,25 +832,31 @@ function AppContent() {
     }
   };
 
-  const handlePublish = async () => {
-    if (!selectedStory) return;
-    if (selectedStory.status === 'published') {
-      alert('This story is already published.');
-      return;
-    }
+  const handlePublishStory = async (storyId: string) => {
     setLoading(true);
     try {
-      await updateDoc(doc(db, 'stories', selectedStory.docId), { 
+      await updateDoc(doc(db, 'stories', storyId), { 
         status: 'published',
         published_at: new Date()
       });
-      setSelectedStory({ ...selectedStory, status: 'published', published_at: new Date() });
+      if (selectedStoryId === storyId) {
+        setSelectedStory(prev => prev ? { ...prev, status: 'published', published_at: new Date() } : null);
+      }
       alert('Story published successfully!');
     } catch (error) {
       console.error("Failed to publish story", error);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handlePublish = async () => {
+    if (!selectedStory) return;
+    if (selectedStory.status === 'published') {
+      alert('This story is already published.');
+      return;
+    }
+    await handlePublishStory(selectedStory.docId);
   };
 
   const handleClearFeed = async () => {
@@ -1365,6 +1371,7 @@ function AppContent() {
                       onClick={() => { handleSelectStory(story.docId || story.id); }}
                       onSave={(e: any) => { e.stopPropagation(); handleSave(story.docId || story.id, !!story.is_saved); }}
                       onDelete={(e: any) => { e.stopPropagation(); handleDeleteStory(story.docId || story.id); }}
+                      onPublish={(e: any) => { e.stopPropagation(); handlePublishStory(story.docId || story.id); }}
                       active={selectedStoryId === (story.docId || story.id)}
                       isAlreadyPublished={isAlreadyPublished}
                     />
@@ -1409,6 +1416,7 @@ function AppContent() {
                       onClick={() => { handleSelectStory(story.docId || story.id); }}
                       onSave={(e: any) => { e.stopPropagation(); handleSave(story.docId || story.id, !!story.is_saved); }}
                       onDelete={(e: any) => { e.stopPropagation(); handleDeleteStory(story.docId || story.id); }}
+                      onPublish={(e: any) => { e.stopPropagation(); handlePublishStory(story.docId || story.id); }}
                       active={selectedStoryId === (story.docId || story.id)}
                       isAlreadyPublished={isAlreadyPublished}
                     />
@@ -1447,6 +1455,7 @@ function AppContent() {
                       onClick={() => { handleSelectStory(story.docId || story.id); }}
                       onSave={(e: any) => { e.stopPropagation(); handleSave(story.docId || story.id, !!story.is_saved); }}
                       onDelete={(e: any) => { e.stopPropagation(); handleDeleteStory(story.docId || story.id); }}
+                      onPublish={(e: any) => { e.stopPropagation(); handlePublishStory(story.docId || story.id); }}
                       active={selectedStoryId === (story.docId || story.id)}
                       isAlreadyPublished={isAlreadyPublished}
                     />
@@ -2847,7 +2856,7 @@ function NavIcon({ icon, active, onClick, disabled, label }: { icon: React.React
   );
 }
 
-function StoryCard({ story, onClick, onSave, onDelete, active, isAlreadyPublished }: any) {
+function StoryCard({ story, onClick, onSave, onDelete, onPublish, active, isAlreadyPublished }: any) {
   const color = CATEGORY_COLORS[story.category] || CATEGORY_COLORS['Default'];
   
   return (
@@ -2862,6 +2871,15 @@ function StoryCard({ story, onClick, onSave, onDelete, active, isAlreadyPublishe
         </div>
       )}
       <div className="absolute top-6 right-6 flex items-center space-x-2 z-10">
+        {story.status !== 'published' && onPublish && (
+          <button 
+            onClick={onPublish}
+            className="p-2 rounded-full bg-transparent text-[#141414]/20 hover:text-emerald-500 hover:bg-emerald-50 transition-all"
+            title="Publish Story"
+          >
+            <CheckCircle2 size={16} />
+          </button>
+        )}
         <button 
           onClick={onDelete}
           className="p-2 rounded-full bg-transparent text-[#141414]/20 hover:text-red-500 hover:bg-red-50 transition-all"

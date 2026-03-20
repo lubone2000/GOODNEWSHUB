@@ -2190,9 +2190,12 @@ function AppContent() {
                       </div>
                     </div>
                     <div className="p-4 bg-[#F5F5F0] rounded-2xl border border-[#141414]/5">
-                      <p className="text-sm italic text-[#141414]/70 leading-relaxed">
-                        {activeVisualPrompt || (selectedStory.packages?.[0]?.visual_prompt) || "No prompt selected. Generate content in Studio first."}
-                      </p>
+                      <textarea 
+                        value={activeVisualPrompt || (selectedStory.packages?.[0]?.visual_prompt) || ""}
+                        onChange={(e) => setActiveVisualPrompt(e.target.value)}
+                        placeholder="No prompt selected. Paste your own prompt here or select from story above."
+                        className="w-full bg-transparent text-sm italic text-[#141414]/70 leading-relaxed outline-none resize-none min-h-[120px]"
+                      />
                     </div>
                     <button 
                       onClick={() => handleGenerateImage(activeVisualPrompt || selectedStory.packages?.[0]?.visual_prompt)}
@@ -2752,6 +2755,79 @@ function AppContent() {
           </div>
         </div>
       )}
+
+      {/* Image Preview Modal */}
+      <AnimatePresence>
+        {previewImage && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/95 backdrop-blur-xl z-[200] flex items-center justify-center p-4 md:p-12"
+            onClick={() => setPreviewImage(null)}
+          >
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="relative max-w-full max-h-full aspect-[9/16] bg-[#141414] rounded-3xl overflow-hidden shadow-2xl border border-white/10"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {previewImage.includes('.mp4') || previewImage.includes('video') || previewImage.includes('blob') ? (
+                <video 
+                  src={previewImage} 
+                  className="w-full h-full object-contain"
+                  controls
+                  autoPlay
+                  loop
+                />
+              ) : (
+                <img 
+                  src={previewImage} 
+                  alt="Preview" 
+                  className="w-full h-full object-contain"
+                  referrerPolicy="no-referrer"
+                />
+              )}
+              <div className="absolute top-6 right-6 flex space-x-2">
+                <button 
+                  onClick={() => {
+                    const link = document.createElement('a');
+                    link.href = previewImage;
+                    link.download = `visual-preview.png`;
+                    link.click();
+                  }}
+                  className="p-3 bg-white/10 hover:bg-white/20 text-white rounded-full backdrop-blur-md transition-all"
+                  title="Download"
+                >
+                  <Download size={20} />
+                </button>
+                <button 
+                  onClick={() => setPreviewImage(null)}
+                  className="p-3 bg-white/10 hover:bg-white/20 text-white rounded-full backdrop-blur-md transition-all"
+                  title="Close"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              
+              <div className="absolute bottom-8 left-0 right-0 px-8 flex justify-center">
+                <div className="bg-black/40 backdrop-blur-md p-4 rounded-2xl border border-white/10 max-w-md w-full">
+                  <p className="text-[10px] text-white/60 font-bold uppercase tracking-widest mb-2 text-center">Visual Concept Preview</p>
+                  <div className="flex justify-center space-x-4">
+                    <button 
+                      onClick={() => setPreviewImage(null)}
+                      className="px-6 py-2 bg-white/10 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-white/20 transition-all"
+                    >
+                      Close Preview
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

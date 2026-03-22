@@ -47,13 +47,15 @@ export const geminiService = {
       const randomSeed = Math.floor(Math.random() * 1000000);
       
       const focusModes = [
-        "DEEP SCIENCE: Focus on university journals and breakthrough labs.",
+        "VIRAL HOOKS: Focus on stories with a 'Wait, what?' factor or extreme emotional payoff.",
+        "VISUAL SPECTACLE: Focus on stories with dramatic physical transformations or stunning locations.",
+        "DEEP SCIENCE: Focus on university journals and breakthrough labs with life-changing results.",
         "LOCAL HEROES: Focus on specific cities and community-led transformations.",
         "GLOBAL TRENDS: Focus on what's spiking on social media right now.",
         "UNDER-REPORTED: Find stories from non-Western or niche news outlets.",
         "EMERGING TECH: Focus on AI, Biotech, and GreenTech solving real problems.",
         "WILDLIFE & NATURE: Focus on conservation wins and species recovery.",
-        "EVERGREEN FACTS: Mind-blowing positive facts about human progress, biology, or the planet that aren't necessarily 'news'.",
+        "EVERGREEN FACTS: Mind-blowing positive facts about human progress, biology, or the planet that are highly shareable.",
         "HISTORICAL WINS: Major milestones in human history that provide perspective on current progress.",
         "CULTURAL SHIFTS: Positive changes in how society operates, inclusivity, and global cooperation."
       ];
@@ -66,7 +68,7 @@ export const geminiService = {
 
       const response = await getAi().models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: `You are a world-class Engagement-Aware News & Fact Discovery Agent. Your goal is to find "Socially Potent" positive news stories and mind-blowing positive facts that are primed for high performance on TikTok and Instagram.
+        contents: `You are a world-class Engagement-Aware News & Fact Discovery Agent. Your goal is to find "Socially Potent" positive news stories and mind-blowing positive facts that are primed for high performance on TikTok, Reels, and YouTube Shorts.
 
         Today's Date: ${today}
         Current Time: ${timeStr}
@@ -77,35 +79,37 @@ export const geminiService = {
 
         STAGE 1: WIDE DISCOVERY
         Scan for stories using these Query Families (Randomly prioritize different ones each time):
+        - VIRAL POTENTIAL: "unbelievable", "just happened", "first time in history", "world record", "miracle", "game changer".
+        - VISUAL HOOK: "stunning transformation", "before and after", "rare footage", "captured on camera", "visible progress".
         - BREAKTHROUGH: "first time", "record low/high", "historic win", "new solution", "successful trial", "just announced".
         - HUMAN IMPACT: "saved", "restored", "cured", "protected", "rebuilt", "recovered", "today".
-        - HOPE/PROGRESS: "community success", "conservation success", "health gains", "decline in harm", "latest update".
         - SOCIALLY STICKY: "unbelievable but true", "what changed", "why this matters", "before/after", "breaking".
         - EVERGREEN/FACTS: "did you know", "mind-blowing fact", "humanity win", "planet progress", "nature secret".
 
         Integrate Trend Signals:
         - Look for rising topics on Google Trends, TikTok hashtags, and Instagram themes related to ${query || "global progress"}.
         - Normalize results from multi-language sources (English, German, Spanish, French, Portuguese, Japanese).
-        - PRIORITY: Find stories that happened in the LAST 24-72 HOURS.
+        - PRIORITY: Find stories that happened in the LAST 24-72 HOURS or have a timeless "mind-blowing" quality.
 
         STAGE 2: STORY SHAPING + RANKING
         For each candidate, evaluate:
         1. Engagement Potential: Strong emotional payoff? Surprising contrast? One-sentence explainability?
         2. Visual Searchability: Does it have people, animals, physical transformation, or dramatic locations?
         3. Social Potency: Is it a clear 15s hook? Does it have a "conflict-to-resolution" arc?
+        4. "The Share Factor": Would someone send this to a friend with the caption "Look at this!"?
 
         CRITICAL INSTRUCTIONS:
-        - Use Google Search to find REAL news (last 30 days) AND evergreen positive facts (mind-blowing statistics, biological wonders, historical milestones) that are highly shareable.
+        - Use Google Search to find REAL news (last 30 days) AND evergreen positive facts that are highly shareable.
         - DIVERSITY IS KEY: Ensure the 15 results cover at least 4 different continents and 5 different categories.
-        - INCLUDE NON-NEWS: At least 3-5 of the 15 results should be "Evergreen Facts" or "Historical Progress" that provide perspective on how far humanity has come.
-        - Avoid "Boring Positivity": No generic corporate CSR, no vague awareness campaigns, no small donations with no impact.
+        - INCLUDE NON-NEWS: At least 3-5 of the 15 results should be "Evergreen Facts" or "Historical Progress" that provide perspective.
+        - Avoid "Boring Positivity": No generic corporate CSR, no vague awareness campaigns.
         - Prefer stories with visible change and measurable results.
-        - Search across university press releases, NGO updates, government announcements, scientific journals, specialized fact databases (like Our World in Data), and historical archives.
+        - Search across university press releases, NGO updates, government announcements, scientific journals, and specialized fact databases.
 
         Return a JSON array of 15 objects with:
         - id: slug
-        - title: engaging, hook-style title
-        - summary: concise, punchy summary
+        - title: engaging, hook-style title (max 60 chars)
+        - summary: concise, punchy summary (max 150 chars)
         - category: MUST be exactly one of: "Health Wins", "Climate Progress", "Wildlife Recovery", "Science Breakthroughs", "Tech Helping People", "Local Community Wins", "Education Improvements", "Accessibility Progress", "Evergreen Facts", "Historical Wins", "Little Wins"
         - region: specific location or "Global"
         - sources: array of {url, title}
@@ -766,6 +770,188 @@ export const geminiService = {
     } catch (error) {
       console.error("Error generating prompt variations:", error);
       return [];
+    }
+  },
+
+  async refineScript(currentScript: string, summary: string, instruction: string = "Make it more concise and impactful, focusing on the core message.") {
+    try {
+      console.log("Refining script:", currentScript);
+      const response = await getAi().models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `Refine the following narration script for a short-form video shot.
+        
+        Current Script: ${currentScript}
+        Story Context: ${summary}
+        Instruction: ${instruction}
+        
+        The refined script should be:
+        - Concise (max 15-20 words).
+        - Impactful and hook-driven.
+        - Natural sounding for narration.
+        
+        Return ONLY the refined script string.`,
+      });
+      
+      return response.text?.trim() || currentScript;
+    } catch (error) {
+      console.error("Error refining script:", error);
+      return currentScript;
+    }
+  },
+
+  async generateHeadline(summary: string, style: string = "Professional", brandSettings?: any) {
+    try {
+      console.log("Generating headline for summary:", summary);
+      const brandContext = brandSettings ? `
+      Brand Tone: ${brandSettings.toneOfVoice}
+      Style Modifier: ${brandSettings.styleModifier}
+      ` : "";
+
+      const response = await getAi().models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `Generate a single, highly engaging, and social-media-optimized headline for a news story with the following summary.
+        
+        Summary: ${summary}
+        Primary Tone/Style: ${style}
+        ${brandContext}
+        
+        The headline should be:
+        - Short and punchy (max 60 characters).
+        - Optimized for TikTok/Reels/Instagram (use hooks, curiosity, or emotional payoff).
+        - Professional yet engaging.
+        - No hashtags in the headline itself.
+        
+        Return ONLY the headline string.`,
+      });
+      
+      return response.text?.trim() || "";
+    } catch (error) {
+      console.error("Error generating headline:", error);
+      return "";
+    }
+  },
+
+  async analyzeUrlForStories(url: string) {
+    try {
+      console.log("Analyzing URL for stories:", url);
+      const response = await getAi().models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `Analyze the content of ${url} and extract the most "Socially Potent" and "Visually Impactful" positive news stories.
+        
+        Focus on:
+        1. Virality: Stories with a clear hook, emotional lift, or surprising breakthrough.
+        2. Visual Potential: Stories that can be easily visualized with dramatic imagery (people, animals, nature, tech).
+        3. Clarity: One-sentence explainability.
+        
+        Return a JSON array of stories with:
+        - id: slug
+        - title: engaging, hook-style title (max 60 chars)
+        - summary: concise, punchy summary (max 150 chars)
+        - category: MUST be exactly one of: "Health Wins", "Climate Progress", "Wildlife Recovery", "Science Breakthroughs", "Tech Helping People", "Local Community Wins", "Education Improvements", "Accessibility Progress", "Evergreen Facts", "Historical Wins", "Little Wins"
+        - region: specific location or "Global"
+        - sources: array of {url, title} (use the provided URL as the source)
+        - engagement_score: 1-10
+        - visual_score: 1-10
+        - trend_signal: why this is viral/shareable`,
+        config: {
+          tools: [{ urlContext: {} }],
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                id: { type: Type.STRING },
+                title: { type: Type.STRING },
+                summary: { type: Type.STRING },
+                category: { type: Type.STRING },
+                region: { type: Type.STRING },
+                engagement_score: { type: Type.INTEGER },
+                visual_score: { type: Type.INTEGER },
+                trend_signal: { type: Type.STRING },
+                sources: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      url: { type: Type.STRING },
+                      title: { type: Type.STRING }
+                    }
+                  }
+                }
+              },
+              required: ["id", "title", "summary", "category", "region", "engagement_score", "visual_score", "sources"]
+            }
+          }
+        }
+      });
+
+      const text = response.text;
+      if (!text) return [];
+      return JSON.parse(cleanJson(text));
+    } catch (error) {
+      console.error("Error in analyzeUrlForStories:", error);
+      return [];
+    }
+  },
+
+  async generateSocialSummary(story: any, claims: any[]) {
+    try {
+      console.log("Generating social summary for:", story.title);
+      const claimsText = (claims || []).map(c => `- ${c.text}`).join("\n");
+      
+      const response = await getAi().models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `Create 3 distinct, high-impact social media snippets for this verified news story.
+        
+        Story: ${story.title}
+        Summary: ${story.summary}
+        Verified Facts:
+        ${claimsText}
+        
+        Requirements for each snippet:
+        1. Hook: A punchy opening line that stops the scroll.
+        2. Value: A clear explanation of why this matters.
+        3. Call to Action: A simple "Share the good news" or similar.
+        4. Length: Max 280 characters (Twitter/X style).
+        5. Emojis: Use 2-3 relevant emojis.
+        
+        Return a JSON object with:
+        {
+          "snippets": [
+            { "type": "The Hook", "text": "..." },
+            { "type": "The Deep Dive", "text": "..." },
+            { "type": "The Quick Fact", "text": "..." }
+          ]
+        }`,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              snippets: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    type: { type: Type.STRING },
+                    text: { type: Type.STRING }
+                  },
+                  required: ["type", "text"]
+                }
+              }
+            },
+            required: ["snippets"]
+          }
+        }
+      });
+
+      const text = response.text;
+      if (!text) return null;
+      return JSON.parse(cleanJson(text));
+    } catch (error) {
+      console.error("Error in generateSocialSummary:", error);
+      return null;
     }
   }
 };

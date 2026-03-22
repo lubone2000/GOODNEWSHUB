@@ -146,7 +146,7 @@ function AppContent() {
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
   const [generatedImages, setGeneratedImages] = useState<(string | null)[]>([null, null, null]);
   const [activeVisualPrompt, setActiveVisualPrompt] = useState<string>('');
-  const [selectedStyle, setSelectedStyle] = useState<string>('Viral/Catchy');
+  const [selectedStyle, setSelectedStyle] = useState<string>('Catchy');
   const [steeringInstruction, setSteeringInstruction] = useState<string>('');
   const [webhooks, setWebhooks] = useState<any[]>([]);
   const [newWebhookName, setNewWebhookName] = useState('');
@@ -156,6 +156,7 @@ function AppContent() {
   const [aiStatus, setAiStatus] = useState<'connected' | 'processing' | 'error'>('connected');
   const [isGenerating, setIsGenerating] = useState(false);
   const [reelPlan, setReelPlan] = useState<any>(null);
+  const [activePackageId, setActivePackageId] = useState<string | null>(null);
   const [reelImages, setReelImages] = useState<(string | null)[]>([null, null, null, null, null]);
   const [reelVideos, setReelVideos] = useState<(string | null)[]>([null, null, null, null, null]);
   const [carouselImages, setCarouselImages] = useState<(string | null)[]>([null, null, null, null]);
@@ -270,7 +271,7 @@ function AppContent() {
   }, [user]);
 
   const filteredStories = stories.filter(s => {
-    const categoryMatch = !selectedCategory || s.category === selectedCategory;
+    let categoryMatch = !selectedCategory || s.category === selectedCategory;
     const regionMatch = !selectedRegion || (s.region && s.region.toLowerCase().includes(selectedRegion.toLowerCase()));
     
     if (activeTab === 'feed') return categoryMatch && regionMatch && s.status === 'pending';
@@ -403,10 +404,18 @@ function AppContent() {
     setLoading(true);
     setAiStatus('processing');
     const currentQuery = typeof queryOverride === 'string' ? queryOverride : searchQuery;
+    const isUrl = currentQuery.startsWith('http://') || currentQuery.startsWith('https://');
     const fullQuery = selectedRegion ? `${currentQuery} in ${selectedRegion}` : currentQuery;
+    
     try {
       const existingTitles = stories.map(s => s.title);
-      const newStories = await geminiService.discoverNews(fullQuery, existingTitles);
+      let newStories;
+      
+      if (isUrl) {
+        newStories = await geminiService.analyzeUrlForStories(currentQuery);
+      } else {
+        newStories = await geminiService.discoverNews(fullQuery, existingTitles);
+      }
       
       if (newStories && newStories.length > 0) {
         await trackUsage(0.001); // Estimated cost for discovery
@@ -671,6 +680,9 @@ function AppContent() {
         for (const pkg of packagesToSave) {
           const pkgRef = doc(collection(storyRef, 'packages'));
           
+          // Generate headline for this package
+          const headline = await geminiService.generateHeadline(selectedStory.summary, selectedStyle, brandSettings);
+          
           // Ensure carousel has exactly 4 slides
           if (pkg.carousel && pkg.carousel.slides) {
             if (pkg.carousel.slides.length < 4) {
@@ -727,6 +739,7 @@ function AppContent() {
           batch.set(pkgRef, {
             platform: 'social_media',
             format: pkg.format || 'social_media_pack',
+            headline: headline || '',
             hook: pkg.hook || '',
             script: pkg.script || '',
             visual_description: pkg.visual_description || '',
@@ -857,6 +870,26 @@ function AppContent() {
       return;
     }
     await handlePublishStory(selectedStory.docId);
+  };
+
+  const handleGenerateSocialSummary = async () => {
+    if (!selectedStory || !user) return;
+    setAiStatus('processing');
+    try {
+      const result = await geminiService.generateSocialSummary(selectedStory, selectedStory.claims || []);
+      if (result && result.snippets) {
+        const storyRef = doc(db, 'stories', selectedStory.docId);
+        await updateDoc(storyRef, {
+          social_snippets: result.snippets
+        });
+        setSelectedStory(prev => prev ? { ...prev, social_snippets: result.snippets } : null);
+        await trackUsage(0.001);
+      }
+      setAiStatus('connected');
+    } catch (error) {
+      console.error("Failed to generate social summary", error);
+      setAiStatus('error');
+    }
   };
 
   const handleClearFeed = async () => {
@@ -1010,7 +1043,7 @@ function AppContent() {
     setVideoLoadingStates(newVideoLoadingStates);
 
     try {
-      const prompt = reelPlan.shots[shotIndex].image_prompt;
+      const prompt = reelPromptOverrides[shotIndex] || reelPlan.shots[shotIndex].image_prompt;
       const imageBase64 = reelImages[shotIndex];
       // Use klingService for video generation
       const videoUrl = await klingService.generateVideo(prompt, imageBase64 || undefined);
@@ -1025,6 +1058,68 @@ function AppContent() {
         next[shotIndex] = false;
         return next;
       });
+    }
+  };
+
+  const handleGenerateHeadline = async (packageDocId: string, summary: string, style: string) => {
+    if (!selectedStory || !user) return;
+    setLoading(true);
+    try {
+      const headline = await geminiService.generateHeadline(summary, style, brandSettings);
+      if (headline) {
+        await updateDoc(doc(db, 'stories', selectedStory.docId, 'packages', packageDocId), {
+          headline: headline
+        });
+        // Update local state
+        setSelectedStory(prev => {
+          if (!prev) return null;
+          const updatedPackages = (prev.packages || []).map(pkg => 
+            pkg.docId === packageDocId ? { ...pkg, headline } : pkg
+          );
+          return { ...prev, packages: updatedPackages };
+        });
+        await trackUsage(0.0005);
+      }
+    } catch (error) {
+      console.error("Failed to generate headline", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpdateHeadline = async (packageDocId: string, headline: string) => {
+    if (!selectedStory || !user) return;
+    try {
+      await updateDoc(doc(db, 'stories', selectedStory.docId, 'packages', packageDocId), {
+        headline: headline
+      });
+      setSelectedStory(prev => {
+        if (!prev) return null;
+        const updatedPackages = (prev.packages || []).map(pkg => 
+          pkg.docId === packageDocId ? { ...pkg, headline } : pkg
+        );
+        return { ...prev, packages: updatedPackages };
+      });
+    } catch (error) {
+      console.error("Failed to update headline", error);
+    }
+  };
+
+  const handleRefineReelScript = async (shotIndex: number) => {
+    if (!reelPlan || !selectedStory) return;
+    setLoading(true);
+    try {
+      const currentScript = reelPlan.shots[shotIndex].script;
+      const refined = await geminiService.refineScript(currentScript, selectedStory.summary);
+      if (refined) {
+        const newShots = [...reelPlan.shots];
+        newShots[shotIndex] = { ...newShots[shotIndex], script: refined };
+        setReelPlan({ ...reelPlan, shots: newShots });
+      }
+    } catch (error) {
+      console.error("Failed to refine script", error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -1153,6 +1248,65 @@ function AppContent() {
               </div>
             )}
           </div>
+        )}
+      </div>
+    );
+  };
+
+  const ScriptEditor = ({ 
+    index, 
+    currentScript 
+  }: { 
+    index: number, 
+    currentScript: string 
+  }) => {
+    const [isEditing, setIsEditing] = useState(false);
+    const [editedScript, setEditedScript] = useState(currentScript);
+
+    return (
+      <div className="space-y-3 pt-4 border-t border-[#141414]/5">
+        <div className="flex items-center justify-between">
+          <p className="text-[10px] font-bold uppercase tracking-widest opacity-40">Narration Script</p>
+          <div className="flex space-x-2">
+            <button 
+              onClick={() => handleRefineReelScript(index)}
+              className="text-[10px] font-bold uppercase tracking-widest text-indigo-600 hover:underline flex items-center"
+              title="Refine with AI"
+            >
+              <Zap size={10} className="mr-1" /> Refine
+            </button>
+            <button 
+              onClick={() => setIsEditing(!isEditing)}
+              className="text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-[#141414] transition-colors"
+            >
+              {isEditing ? 'Cancel' : 'Edit'}
+            </button>
+          </div>
+        </div>
+
+        {isEditing ? (
+          <div className="space-y-2">
+            <textarea 
+              value={editedScript}
+              onChange={(e) => setEditedScript(e.target.value)}
+              className="w-full p-3 bg-white rounded-xl border border-[#141414]/10 text-[10px] outline-none focus:border-[#141414]/40 min-h-[60px]"
+            />
+            <button 
+              onClick={() => {
+                if (reelPlan) {
+                  const newShots = [...reelPlan.shots];
+                  newShots[index] = { ...newShots[index], script: editedScript };
+                  setReelPlan({ ...reelPlan, shots: newShots });
+                }
+                setIsEditing(false);
+              }}
+              className="w-full py-2 bg-[#141414] text-white rounded-xl text-[10px] font-bold uppercase tracking-widest"
+            >
+              Save Script
+            </button>
+          </div>
+        ) : (
+          <p className="text-[10px] text-[#141414]/60 italic line-clamp-2">{currentScript}</p>
         )}
       </div>
     );
@@ -1784,6 +1938,52 @@ function AppContent() {
                       </div>
                     )}
 
+                    {selectedStory.status === 'verified' && (
+                      <div className="bg-white p-6 rounded-3xl border border-[#141414]/5 space-y-6">
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-sm font-bold uppercase tracking-widest opacity-40">Social Snippets</h3>
+                          <button 
+                            onClick={handleGenerateSocialSummary}
+                            disabled={aiStatus === 'processing'}
+                            className="text-[10px] font-bold uppercase tracking-widest text-indigo-600 hover:underline flex items-center"
+                          >
+                            <RefreshCw size={10} className={`mr-1 ${aiStatus === 'processing' ? 'animate-spin' : ''}`} />
+                            {selectedStory.social_snippets ? 'Regenerate' : 'Generate'}
+                          </button>
+                        </div>
+                        
+                        {selectedStory.social_snippets ? (
+                          <div className="space-y-4">
+                            {selectedStory.social_snippets.map((snippet: any, i: number) => (
+                              <div key={i} className="bg-[#F5F5F0] p-4 rounded-2xl space-y-2 group relative">
+                                <div className="flex justify-between items-center">
+                                  <span className="text-[8px] font-bold uppercase tracking-widest opacity-40">{snippet.type}</span>
+                                  <button 
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(snippet.text);
+                                      alert('Snippet copied to clipboard!');
+                                    }}
+                                    className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:text-indigo-600"
+                                    title="Copy to clipboard"
+                                  >
+                                    <Copy size={12} />
+                                  </button>
+                                </div>
+                                <p className="text-xs leading-relaxed text-[#141414]/80">{snippet.text}</p>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-center py-8 space-y-3">
+                            <div className="w-10 h-10 bg-[#F5F5F0] rounded-full flex items-center justify-center mx-auto">
+                              <FileText size={20} className="opacity-20" />
+                            </div>
+                            <p className="text-[10px] opacity-40 italic">Generate AI-powered social media snippets for this story.</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     <div className="space-y-6">
                       <h3 className="text-sm font-bold uppercase tracking-widest opacity-40">Evidence Sources</h3>
                       <div className="space-y-4">
@@ -1863,7 +2063,7 @@ function AppContent() {
                   <div className="space-y-4">
                     <h3 className="text-sm font-bold uppercase tracking-widest opacity-40">1. Select Tone & Style</h3>
                     <div className="flex flex-wrap gap-2">
-                      {['Viral/Catchy', 'Emotional', 'Excited', 'Storyteller', 'Professional'].map(style => (
+                      {['Catchy', 'Emotional', 'Excited', 'Storyteller', 'Professional'].map(style => (
                         <button
                           key={style}
                           onClick={() => setSelectedStyle(style)}
@@ -2000,6 +2200,47 @@ function AppContent() {
 
                         {pkg.format === 'instagram_pack' || pkg.format === 'social_media_pack' ? (
                           <div className="space-y-12">
+                            {/* Headline Section */}
+                            <div className="space-y-4 p-6 bg-indigo-50/50 rounded-3xl border border-indigo-100">
+                              <div className="flex items-center justify-between">
+                                <h3 className="text-sm font-bold uppercase tracking-widest text-indigo-900/60 flex items-center">
+                                  <Zap size={14} className="mr-2 text-indigo-600" /> 
+                                  Social Headline
+                                </h3>
+                                <button 
+                                  onClick={() => handleGenerateHeadline(pkg.docId, selectedStory.summary, selectedStyle)}
+                                  disabled={loading}
+                                  className="text-[10px] font-bold uppercase tracking-widest text-indigo-600 hover:underline flex items-center"
+                                >
+                                  <RefreshCw size={10} className={`mr-1 ${loading ? 'animate-spin' : ''}`} /> 
+                                  {pkg.headline ? 'Regenerate' : 'Generate Headline'}
+                                </button>
+                              </div>
+                              {pkg.headline ? (
+                                <div className="space-y-3">
+                                  <textarea
+                                    value={pkg.headline}
+                                    onChange={(e) => handleUpdateHeadline(pkg.docId, e.target.value)}
+                                    className="w-full bg-transparent border-none text-xl font-serif italic leading-tight text-indigo-900 outline-none resize-none"
+                                    rows={2}
+                                  />
+                                  <div className="flex justify-end">
+                                    <button 
+                                      onClick={() => {
+                                        navigator.clipboard.writeText(pkg.headline);
+                                        alert('Headline copied!');
+                                      }}
+                                      className="text-[10px] font-bold uppercase tracking-widest text-indigo-600/60 hover:text-indigo-600 flex items-center"
+                                    >
+                                      <Copy size={10} className="mr-1" /> Copy Headline
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <p className="text-sm italic text-indigo-900/40">No headline generated yet. Click generate to create a hook-driven headline.</p>
+                              )}
+                            </div>
+
                             {/* Hashtags Section */}
                             {pkg.hashtags && pkg.hashtags.length > 0 && (
                               <div className="space-y-4">
@@ -2105,6 +2346,7 @@ function AppContent() {
                               <button 
                                 onClick={() => {
                                   setReelPlan(pkg.reel);
+                                  setActivePackageId(pkg.docId);
                                   setActiveTab('visual');
                                 }}
                                 className="px-12 py-4 bg-[#141414] text-white rounded-2xl font-bold uppercase tracking-widest text-xs hover:opacity-90 transition-all flex items-center"
@@ -2563,14 +2805,14 @@ function AppContent() {
                                   {imageLoadingStates[idx] ? <Loader2 size={14} className="animate-spin mr-2" /> : <ImageIcon size={14} className="mr-2" />}
                                   {reelImages[idx] ? 'Get Variation' : 'Gen Image'}
                                 </button>
-                                {reelImages[idx] && !reelVideos[idx] && (
+                                {reelImages[idx] && (
                                   <button 
                                     onClick={() => handleGenerateReelVideo(idx)}
                                     disabled={videoLoadingStates[idx]}
-                                    className="w-full py-3 bg-indigo-600 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest flex items-center justify-center hover:scale-105 transition-transform"
+                                    className={`w-full py-3 ${reelVideos[idx] ? 'bg-amber-500' : 'bg-indigo-600'} text-white rounded-xl text-[10px] font-bold uppercase tracking-widest flex items-center justify-center hover:scale-105 transition-transform`}
                                   >
                                     {videoLoadingStates[idx] ? <Loader2 size={14} className="animate-spin mr-2" /> : <Video size={14} className="mr-2" />}
-                                    Gen Video
+                                    {reelVideos[idx] ? 'Regen Video' : 'Gen Video'}
                                   </button>
                                 )}
                                 {reelVideos[idx] && (
@@ -2591,9 +2833,10 @@ function AppContent() {
                             </div>
 
                             <div className="space-y-2">
-                              <p className="text-[10px] font-bold leading-tight text-[#141414]/80">
-                                {shot.script}
-                              </p>
+                              <ScriptEditor 
+                                index={idx}
+                                currentScript={shot.script}
+                              />
                               <div className="space-y-1">
                                 <div className="flex items-center justify-between mb-1">
                                   <span className="text-[8px] font-bold uppercase tracking-widest opacity-30">Visual Prompt</span>
@@ -2607,6 +2850,15 @@ function AppContent() {
                                   >
                                     <Copy size={8} className="mr-1" /> Copy
                                   </button>
+                                  {activePackageId && (
+                                    <button 
+                                      onClick={() => handleGeneratePromptVariations(activePackageId, 'reel', idx, reelPromptOverrides[idx] || shot.image_prompt)}
+                                      disabled={aiStatus === 'processing'}
+                                      className="text-[8px] font-bold uppercase tracking-widest text-emerald-600 hover:underline disabled:opacity-30"
+                                    >
+                                      Get Variations
+                                    </button>
+                                  )}
                                 </div>
                                 <textarea
                                   value={reelPromptOverrides[idx] || shot.image_prompt}
@@ -2618,6 +2870,23 @@ function AppContent() {
                                   className="w-full p-2 bg-[#F5F5F0] rounded-lg text-[8px] text-[#141414]/60 italic border border-transparent focus:border-[#141414]/10 outline-none resize-none h-12"
                                   placeholder="Adjust visual prompt..."
                                 />
+                                {shot.prompt_variations && shot.prompt_variations.length > 0 && (
+                                  <div className="flex flex-wrap gap-1 mt-1">
+                                    {shot.prompt_variations.map((v: string, vIdx: number) => (
+                                      <button
+                                        key={vIdx}
+                                        onClick={() => {
+                                          const next = [...reelPromptOverrides];
+                                          next[idx] = v;
+                                          setReelPromptOverrides(next);
+                                        }}
+                                        className="px-2 py-0.5 bg-[#F5F5F0] border border-[#141414]/5 rounded text-[7px] font-bold uppercase hover:bg-[#141414] hover:text-white transition-colors"
+                                      >
+                                        Var {vIdx + 1}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </div>

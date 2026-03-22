@@ -32,6 +32,10 @@ export interface Story {
   engagement_score?: number;
   visual_score?: number;
   trend_signal?: string;
+  social_snippets?: {
+    type: string;
+    text: string;
+  }[];
 }
 
 export interface Source {
